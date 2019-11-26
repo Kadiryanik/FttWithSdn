@@ -2,3 +2,8 @@
 .oppbuildspec
 .project
 .settings
+src/.qtenvrc
+out
+Makefile
+FttWithSdn
+FttWithSdn_dbg
