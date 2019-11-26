@@ -3,6 +3,9 @@
 .project
 .settings
 src/.qtenvrc
+src/*_m.cc
+src/*_m.h
+src/notes
 out
 Makefile
 FttWithSdn

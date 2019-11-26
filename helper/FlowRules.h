@@ -10,7 +10,7 @@
 
 #include "Rule.h"
 
-#define MAX_RULE_NUM 10 // TODO: could be dynamic via constructer
+#define MAX_RULE_NUM 10 // TODO: could be dynamic via constructor
 
 #define NEXT_DESTINATION_NOT_KNOWN 0xFF
 

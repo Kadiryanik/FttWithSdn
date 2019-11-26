@@ -18,6 +18,7 @@ package src;
 simple Controller
 {
     parameters:
+        volatile int id;
         @display("i=block/cogwheel");
     gates:
         inout gate[];
@@ -26,6 +27,8 @@ simple Controller
 simple Switch
 {
     parameters:
+        volatile int defaultRoute;
+        volatile int id;
         @display("i=block/switch");
     gates:
         inout gate[];
@@ -63,7 +66,7 @@ network TestNetwork
         switch_1.gate++ <--> Channel <--> controller.gate++;
         // switch 2
         switch_2.gate++ <--> Channel <--> switch_0.gate++;
-        switch_2.gate++ <--> Channel <--> switch_3.gate++;
         // switch 3
         switch_3.gate++ <--> Channel <--> switch_1.gate++;
+        switch_3.gate++ <--> Channel <--> switch_2.gate++;
 }

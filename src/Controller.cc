@@ -13,6 +13,8 @@ using namespace omnetpp;
 
 class Controller : public cSimpleModule
 {
+  private:
+    uint8_t id;
   protected:
     virtual void forwardMessage(cMessage *msg);
     virtual void initialize() override;
@@ -23,10 +25,12 @@ Define_Module(Controller);
 
 void Controller::initialize()
 {
+    id = par("id");
 }
 
 void Controller::handleMessage(cMessage *msg)
 {
+    EV << "Message " << msg << " arrived.\n";
 }
 
 void Controller::forwardMessage(cMessage *msg)

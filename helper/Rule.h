@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#include "conf.h"
+
 #define RULE_NO_MATCH 0xFF
 
 class Rule {
