@@ -174,7 +174,7 @@ GeneralMessage* Switch::generateMesagge(int type, int dest, int port, char *data
 /*------------------------------------------------------------------------------*/
 void Switch::sendAdv(int gateNum)
 {
-    GeneralMessage *gMsg = generateMesagge(GM_TYPE_ADVERTISE, 0, NULL);
+    GeneralMessage *gMsg = generateMesagge(GM_TYPE_ADVERTISE, 0, 0, NULL);
     if(gMsg == NULL){
         EV << "sendAdv: Message generate failed!\n";
         return;
@@ -187,7 +187,7 @@ void Switch::sendAdv(int gateNum)
 /*------------------------------------------------------------------------------*/
 void Switch::sendAdvAck(int gateNum)
 {
-    GeneralMessage *gMsg = generateMesagge(GM_TYPE_ADVERTISE_ACK, 0, NULL);
+    GeneralMessage *gMsg = generateMesagge(GM_TYPE_ADVERTISE_ACK, 0, 0, NULL);
     if(gMsg == NULL){
         EV << "sendAdvAck: Message generate failed!\n";
         return;
