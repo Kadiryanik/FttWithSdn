@@ -10,6 +10,7 @@
 #include <omnetpp.h>
 
 #include "helper/FlowRules.h"
+#include "helper/Relation.h"
 #include "GeneralMessage_m.h"
 
 using namespace omnetpp;
@@ -17,21 +18,55 @@ using namespace omnetpp;
 /*------------------------------------------------------------------------------*/
 class Controller : public cSimpleModule
 {
+  public:
+    Controller();
+    virtual ~Controller();
   protected:
     virtual void forwardMessage(cMessage *msg);
     virtual void initialize() override;
     virtual void handleMessage(cMessage *msg) override;
   private:
+
     void sendAdvAck(int gateNum);
     int id;
+    Relation* relations;
 };
 
 Define_Module(Controller);
 
 /*------------------------------------------------------------------------------*/
+Controller::Controller()
+{
+    relations = NULL;
+}
+
+/*------------------------------------------------------------------------------*/
+Controller::~Controller()
+{
+	if(relations != NULL){
+    	delete relations;
+	}
+}
+
+/*------------------------------------------------------------------------------*/
 void Controller::initialize()
 {
     id = par("id");
+
+    relations = new Relation(5); // TODO: relation must update when topology changed
+
+    // controller
+    relations->addEdge(0, 1);
+    relations->addEdge(0, 2);
+
+    // sw 0
+    relations->addEdge(1, 3);
+
+    // sw 1
+    relations->addEdge(2, 4);
+
+    // sw 2
+    relations->addEdge(3, 4);
 }
 
 /*------------------------------------------------------------------------------*/
@@ -44,7 +79,7 @@ void Controller::handleMessage(cMessage *msg)
     }
 
     EV << "handleMessage: Message " << msg << " received from " << gMsg->getSource() << "\n";
-    // advertise messages destination address not valid, so check firs type
+
     int type = gMsg->getType();
     if(type == GM_TYPE_ADVERTISE){
         sendAdvAck(msg->getArrivalGate()->getIndex());

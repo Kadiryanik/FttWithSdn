@@ -34,7 +34,7 @@ class Switch : public cSimpleModule
     GeneralMessage *generateMesagge(int type, int dest, int port, char *data);
     void sendAdv(int gateNum);
     void sendAdvAck(int gateNum);
-    cMessage *timerEvent; 
+    cMessage *timerEvent;
     FlowRules flowRules;
     int advDone;
     int defaultRoute;
