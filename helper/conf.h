@@ -8,9 +8,10 @@
 #ifndef HELPER_CONF_H_
 #define HELPER_CONF_H_
 
-#define GM_TYPE_DATA      0x01
-#define GM_TYPE_FLOW_RULE 0x02
-#define GM_TYPE_FORWARD   0x03
+#define GM_TYPE_DATA          0x01
+#define GM_TYPE_FLOW_RULE     0x02
+#define GM_TYPE_ADVERTISE     0x03
+#define GM_TYPE_ADVERTISE_ACK 0x04
 
 #define CONTROLLER_ID 0
 #define SWITCH_0_ID   10

@@ -9,7 +9,6 @@
 #define HELPER_RULE_H_
 
 #include <stdio.h>
-#include <stdint.h>
 
 #include "conf.h"
 
@@ -17,15 +16,15 @@
 
 class Rule {
 private:
-    uint8_t source;
-    uint8_t destination;
-    uint8_t port;
-    uint8_t nextDestination;
+    int source;
+    int destination;
+    int port;
+    int nextDestination;
 public:
     Rule();
     virtual ~Rule();
-    uint8_t checkRule(uint8_t, uint8_t, uint8_t);
-    void setRule(uint8_t, uint8_t, uint8_t, uint8_t);
+    int checkRule(int, int, int);
+    void setRule(int, int, int, int);
 };
 
 #endif /* HELPER_RULE_H_ */

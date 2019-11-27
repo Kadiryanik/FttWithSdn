@@ -7,17 +7,20 @@
 
 #include "FlowRules.h"
 
+/*------------------------------------------------------------------------------*/
 FlowRules::FlowRules() {
 	this->ruleOffset = 0;
 }
 
+/*------------------------------------------------------------------------------*/
 FlowRules::~FlowRules() {
 }
 
-uint8_t FlowRules::getNextDestination(uint8_t src, uint8_t dst, uint8_t p) {
-	uint8_t i;
+/*------------------------------------------------------------------------------*/
+int FlowRules::getNextDestination(int src, int dst, int p) {
+	int i;
 	for(i = 0; i < this->ruleOffset; i++){
-		uint8_t ret = this->rules[i].checkRule(src, dst, p);
+		int ret = this->rules[i].checkRule(src, dst, p);
 		if(ret != RULE_NO_MATCH){
 			// we found matching rule
 			return ret;
@@ -27,7 +30,8 @@ uint8_t FlowRules::getNextDestination(uint8_t src, uint8_t dst, uint8_t p) {
 	return NEXT_DESTINATION_NOT_KNOWN;
 }
 
-uint8_t FlowRules::addRule(uint8_t src, uint8_t dst, uint8_t p, uint8_t next) {
+/*------------------------------------------------------------------------------*/
+int FlowRules::addRule(int src, int dst, int p, int next) {
 	if(this->ruleOffset < MAX_RULE_NUM){
 		this->rules[this->ruleOffset].setRule(src, dst, p, next);
 		this->ruleOffset++;

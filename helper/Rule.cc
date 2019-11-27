@@ -17,14 +17,14 @@ Rule::Rule() {
 Rule::~Rule() {
 }
 
-uint8_t Rule::checkRule(uint8_t src, uint8_t dst, uint8_t p) {
+int Rule::checkRule(int src, int dst, int p) {
 	if(this->source == src && this->destination == dst && this->port == p){
 		return this->nextDestination;
 	}
 	return RULE_NO_MATCH;
 }
 
-void Rule::setRule(uint8_t src, uint8_t dst, uint8_t p, uint8_t next) {
+void Rule::setRule(int src, int dst, int p, int next) {
     this->source = src;
     this->destination = dst;
     this->port = p;

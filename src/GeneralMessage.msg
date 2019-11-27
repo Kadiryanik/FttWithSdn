@@ -4,5 +4,9 @@ message GeneralMessage
     int source;
     int destination;
     int port;
-    int nextDestination;
+
+    int fRuleSource;
+    int fRuleDestination;
+    int fRulePort;
+    int fRuleNextDestination;
 }

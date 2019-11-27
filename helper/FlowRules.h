@@ -10,19 +10,19 @@
 
 #include "Rule.h"
 
-#define MAX_RULE_NUM 10 // TODO: could be dynamic via constructor
+#define MAX_RULE_NUM 20 // TODO: could be dynamic via constructor
 
 #define NEXT_DESTINATION_NOT_KNOWN 0xFF
 
 class FlowRules {
 private:
 	Rule rules[MAX_RULE_NUM];
-	uint8_t ruleOffset;
+	int ruleOffset;
 public:
     FlowRules();
     virtual ~FlowRules();
-    uint8_t getNextDestination(uint8_t, uint8_t, uint8_t);
-    uint8_t addRule(uint8_t, uint8_t, uint8_t, uint8_t);
+    int getNextDestination(int, int, int);
+    int addRule(int, int, int, int);
 };
 
 #endif /* HELPER_FLOWRULES_H_ */
