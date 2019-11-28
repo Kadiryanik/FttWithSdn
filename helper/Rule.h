@@ -16,15 +16,15 @@
 
 class Rule {
 private:
-    int source;
-    int destination;
-    int port;
-    int nextDestination;
+  int source;
+  int destination;
+  int port;
+  int nextDestination;
 public:
-    Rule();
-    virtual ~Rule();
-    int checkRule(int, int, int);
-    void setRule(int, int, int, int);
+  Rule();
+  virtual ~Rule();
+  int checkRule(int, int, int);
+  void setRule(int, int, int, int);
 };
 
 #endif /* HELPER_RULE_H_ */

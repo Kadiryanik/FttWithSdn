@@ -14,15 +14,15 @@ using namespace std;
 
 class Relation {
 public:
-    Relation(int);
-    virtual ~Relation();
-    void addEdge(int src, int dest);
-	vector<int> getShortestDistance(int src, int dest);
+  Relation(int);
+  virtual ~Relation();
+  void addEdge(int src, int dest);
+  vector<int> getShortestDistance(int src, int dest);
 private:
-	bool BFS(int src, int dest, int pred[], int dist[]);
+  bool BFS(int src, int dest, int pred[], int dist[]);
 
-	int v;
-	vector<int> *adj;
+  int v;
+  vector<int> *adj;
 };
 
 #endif /* HELPER_RELATION_H_ */

@@ -16,13 +16,13 @@
 
 class FlowRules {
 private:
-	Rule rules[MAX_RULE_NUM];
-	int ruleOffset;
+  Rule rules[MAX_RULE_NUM];
+  int ruleOffset;
 public:
-    FlowRules();
-    virtual ~FlowRules();
-    int getNextDestination(int, int, int);
-    int addRule(int, int, int, int);
+  FlowRules();
+  virtual ~FlowRules();
+  int getNextDestination(int, int, int);
+  int addRule(int, int, int, int);
 };
 
 #endif /* HELPER_FLOWRULES_H_ */
