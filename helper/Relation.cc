@@ -94,3 +94,23 @@ bool Relation::BFS(int src, int dest, int pred[], int dist[]){
 
   return false;
 }
+
+/*------------------------------------------------------------------------------*/
+int getIndexFromId(int id)
+{
+  if(id == 0){
+    return 0;
+  }
+
+  return (id - SWITCH_INDEX_OFFSET);
+}
+
+/*------------------------------------------------------------------------------*/
+int getIdFromIndex(int index)
+{
+  if(index == 0){
+    return 0;
+  }
+
+  return (index + SWITCH_INDEX_OFFSET);
+}

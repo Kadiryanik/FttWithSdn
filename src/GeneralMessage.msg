@@ -9,4 +9,6 @@ message GeneralMessage
     int fRuleDestination;
     int fRulePort;
     int fRuleNextDestination;
+
+    int nextHop[];
 }

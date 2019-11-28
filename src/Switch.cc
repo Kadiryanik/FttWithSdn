@@ -10,27 +10,25 @@
 #include <omnetpp.h>
 
 #include "helper/FlowRules.h"
+#include "helper/Relation.h"
 #include "GeneralMessage_m.h"
 
 using namespace omnetpp;
 
 /*------------------------------------------------------------------------------*/
-#define EXPECTED_GATE_MAX_NUM 10
-#define NULL_GATE_VAL 0xFF
-
 // TODO: use omnet logging features to seperate error, warn and info logs
 
 /*------------------------------------------------------------------------------*/
 class Switch : public cSimpleModule
 {
-  public:
+public:
   Switch();
   virtual ~Switch();
-  protected:
+protected:
   virtual void forwardMessage(GeneralMessage *gMsg);
   virtual void initialize() override;
   virtual void handleMessage(cMessage *msg) override;
-  private:
+private:
   GeneralMessage *generateMesagge(int type, int dest, int port, char *data);
   void sendAdv(int gateNum);
   void sendAdvAck(int gateNum);
@@ -92,11 +90,23 @@ void Switch::handleMessage(cMessage *msg)
       // we reach here means that all gate-destination relationships set
       advDone = 1;
       EV << "handleMessage: Advertising done!\n";
-
+    }
+    if(id == SWITCH_2_ID){
       // initilize to send data to controller
-      char data[] = "HELLO";
-      GeneralMessage *gMsg = generateMesagge(GM_TYPE_DATA, 0, 0, data);
+      char data[] = "DATA-sw2-to-sw3";
+      GeneralMessage *gMsg = generateMesagge(GM_TYPE_DATA, SWITCH_3_ID, 0, data);
       scheduleAt(simTime() + 0.1, gMsg);
+
+      // schedule periodicly
+      scheduleAt(simTime() + 5, timerEvent);
+    } else if(id == SWITCH_0_ID){
+      // initilize to send data to controller
+      char data[] = "DATA-sw0-to-sw1";
+      GeneralMessage *gMsg = generateMesagge(GM_TYPE_DATA, SWITCH_1_ID, 0, data);
+      scheduleAt(simTime() + 0.1, gMsg);
+
+      // schedule periodicly
+      scheduleAt(simTime() + 5, timerEvent);
     }
   } else{
     GeneralMessage *gMsg = check_and_cast<GeneralMessage *>(msg);
@@ -108,7 +118,12 @@ void Switch::handleMessage(cMessage *msg)
     // destination area is not valid for advertisement messages so check them first
     int type = gMsg->getType();
     if(type == GM_TYPE_ADVERTISE){
-      EV << "handleMessage: Adv message received from " << gMsg->getSource() << "\n";
+      int srcIndex = getIndexFromId(gMsg->getSource());
+      if(srcIndex == CONTROLLER_INDEX){
+        EV << "handleMessage: Adv message received from Controller\n";
+      } else{
+        EV << "handleMessage: Adv message received from Switch_" << (srcIndex - 1) << "\n";
+      }
 
       int gate = msg->getArrivalGate()->getIndex();
       gateToDest[gate] = gMsg->getSource();
@@ -118,13 +133,29 @@ void Switch::handleMessage(cMessage *msg)
       gateToDest[msg->getArrivalGate()->getIndex()] = gMsg->getSource();
     } else if(gMsg->getDestination() == id) { // check is message for us
       if(type == GM_TYPE_DATA){
-        EV << "handleMessage: Message " << msg << " received from " << gMsg->getSource() << "\n";
-        delete msg;
+        int srcIndex = getIndexFromId(gMsg->getSource());
+        if(srcIndex == CONTROLLER_INDEX){
+          EV << "handleMessage: Message " << msg << " received from Controller, send back\n";
+        } else{
+          EV << "handleMessage: Message " << msg << " received from Switch_" << (srcIndex - 1) << ", send back\n";
+        }
+
+        char data[] = "HELLO-BACK";
+        GeneralMessage *reply = generateMesagge(GM_TYPE_DATA, gMsg->getSource(), 0, data);
+        scheduleAt(simTime() + 0.1, reply);
+
+        // cancel timerEvent is scheduled and send reply only
+        if(timerEvent->isScheduled()){
+          cancelEvent(timerEvent);
+        }
       } else if(type == GM_TYPE_FLOW_RULE){
+        EV << "handleMessage: FlowRule received from ID:" << gMsg->getSource() << "\n";
         flowRules.addRule(gMsg->getFRuleSource(), gMsg->getFRuleDestination(), gMsg->getFRulePort(), gMsg->getFRuleNextDestination());
       } else{
         EV << "handleMessage: Unknown message type!\n";
       }
+
+      delete msg; // free received msg
     } else {
       forwardMessage(gMsg);
     }
@@ -138,6 +169,23 @@ void Switch::forwardMessage(GeneralMessage *gMsg)
   int gateNum = n;
   int dest = flowRules.getNextDestination(gMsg->getSource(), gMsg->getDestination(), gMsg->getPort());
 
+  if(gMsg->getType() == GM_TYPE_FLOW_RULE){
+    unsigned int arrSize = gMsg->getNextHopArraySize();
+
+    if(arrSize > 0){
+      // remove us from list and forward to nextHop
+      for(i = 0; i < arrSize - 1; i++){
+        gMsg->setNextHop(i, gMsg->getNextHop(i + 1));
+      }
+
+      // manipulate the dest variable for forwarding GM_TYPE_FLOW_RULE messages
+      dest = gMsg->getNextHop(0); // points to next destination
+
+      // set new array size, not including us
+      gMsg->setNextHopArraySize(arrSize - 1);
+    } // else actually didin't expect, last hop points to destination, so will not try to forward
+  }
+
   // get destination's gate from destination id
   for(i = 0; i < n; i++){
     if(gateToDest[i] == dest){
@@ -146,11 +194,20 @@ void Switch::forwardMessage(GeneralMessage *gMsg)
     }
   }
 
-  if(gateNum == NEXT_DESTINATION_NOT_KNOWN || gateNum >= n){
+  if(gateNum >= n){
+    if(gMsg->getType() == GM_TYPE_FLOW_RULE){
+      int srcIndex = getIndexFromId(dest);
+        if(srcIndex == CONTROLLER_INDEX){
+          EV << "forwardMessage: FATAL! (nextHop is Controller and not connected to our gates!\n";
+        } else{
+          EV << "forwardMessage: FATAL! (nextHop is Switch_" << (srcIndex - 1) << " connected to our gates!\n";
+        }
+      
+    }
     gateNum = defaultRoute;
   }
 
-  EV << "forwardMessage: Forwarding message " << (cMessage *)gMsg << " on gate[" << gateNum << "]\n";
+  EV << "forwardMessage: Forwarding message on gate[" << gateNum << "]\n";
   // $o and $i suffix is used to identify the input/output part of a two way gate
   send(gMsg, "gate$o", gateNum);
 }
