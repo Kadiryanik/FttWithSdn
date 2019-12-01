@@ -37,6 +37,7 @@ private:
   int advDone;
   int defaultRoute;
   int id;
+  int replied; // TODO: make this more readable
   int gateToDest[EXPECTED_GATE_MAX_NUM];
 };
 
@@ -69,6 +70,8 @@ void Switch::initialize()
   // get id, too
   id = par("id");
 
+  replied = 0;
+
   // set timer to start advertisement
   timerEvent = new cMessage("event");
   scheduleAt(simTime() + 0.1, timerEvent);
@@ -91,7 +94,7 @@ void Switch::handleMessage(cMessage *msg)
       advDone = 1;
       EV << "handleMessage: Advertising done!\n";
     }
-    if(id == SWITCH_2_ID){
+    if(id == SWITCH_2_ID && !(replied & (1 << SWITCH_3_INDEX))){
       // initilize to send data to controller
       char data[] = "DATA-sw2-to-sw3";
       GeneralMessage *gMsg = generateMesagge(GM_TYPE_DATA, SWITCH_3_ID, 0, data);
@@ -99,10 +102,18 @@ void Switch::handleMessage(cMessage *msg)
 
       // schedule periodicly
       scheduleAt(simTime() + 5, timerEvent);
-    } else if(id == SWITCH_0_ID){
+    } else if(id == SWITCH_0_ID && !(replied & (1 << SWITCH_1_INDEX))){
       // initilize to send data to controller
       char data[] = "DATA-sw0-to-sw1";
       GeneralMessage *gMsg = generateMesagge(GM_TYPE_DATA, SWITCH_1_ID, 0, data);
+      scheduleAt(simTime() + 0.1, gMsg);
+
+      // schedule periodicly
+      scheduleAt(simTime() + 5, timerEvent);
+    } else if(id == SWITCH_4_ID && !(replied & (1 << SWITCH_0_INDEX))){
+      // initilize to send data to controller
+      char data[] = "DATA-sw4-to-sw0";
+      GeneralMessage *gMsg = generateMesagge(GM_TYPE_DATA, SWITCH_0_ID, 0, data);
       scheduleAt(simTime() + 0.1, gMsg);
 
       // schedule periodicly
@@ -131,7 +142,11 @@ void Switch::handleMessage(cMessage *msg)
     } else if(type == GM_TYPE_ADVERTISE_ACK){
       // set gate-destination relation
       gateToDest[msg->getArrivalGate()->getIndex()] = gMsg->getSource();
+#if WITH_ADMISSION_CONTROL
+    } else if(type != GM_TYPE_ADMISSION && gMsg->getDestination() == id) { // forward ADMISSION messages even for us
+#else /* WITH_ADMISSION_CONTROL */
     } else if(gMsg->getDestination() == id) { // check is message for us
+#endif /* WITH_ADMISSION_CONTROL */
       if(type == GM_TYPE_DATA){
         int srcIndex = getIndexFromId(gMsg->getSource());
         if(srcIndex == CONTROLLER_INDEX){
@@ -140,14 +155,11 @@ void Switch::handleMessage(cMessage *msg)
           EV << "handleMessage: Message " << msg << " received from Switch_" << (srcIndex - 1) << ", send back\n";
         }
 
-        char data[] = "HELLO-BACK";
+        char data[] = "HELLO-BACK"; // TODO: add src-seq count in message
         GeneralMessage *reply = generateMesagge(GM_TYPE_DATA, gMsg->getSource(), 0, data);
-        scheduleAt(simTime() + 0.1, reply);
+        scheduleAt(simTime() + 0.5, reply);
 
-        // cancel timerEvent is scheduled and send reply only
-        if(timerEvent->isScheduled()){
-          cancelEvent(timerEvent);
-        }
+        replied |= (1 << getIndexFromId(gMsg->getSource())); // set flag to cancelEvent
       } else if(type == GM_TYPE_FLOW_RULE){
         EV << "handleMessage: FlowRule received from ID:" << gMsg->getSource() << "\n";
         flowRules.addRule(gMsg->getFRuleSource(), gMsg->getFRuleDestination(), gMsg->getFRulePort(), gMsg->getFRuleNextDestination());
@@ -195,6 +207,11 @@ void Switch::forwardMessage(GeneralMessage *gMsg)
   }
 
   if(gateNum >= n){
+#if WITH_ADMISSION_CONTROL
+    if(gMsg->getType() == GM_TYPE_DATA && gMsg->getSource() == id){ // if we are sending data and doesn't match any rules 
+      gMsg->setType(GM_TYPE_ADMISSION); // manipulate the type to ensure that the message is forwarded to the controller
+    }
+#endif /* WITH_ADMISSION_CONTROL */
     if(gMsg->getType() == GM_TYPE_FLOW_RULE){
       int srcIndex = getIndexFromId(dest);
         if(srcIndex == CONTROLLER_INDEX){

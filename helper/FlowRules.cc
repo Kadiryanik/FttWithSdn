@@ -27,7 +27,7 @@ int FlowRules::getNextDestination(int src, int dst, int p) {
     }
   }
 
-  return NEXT_DESTINATION_NOT_KNOWN;
+  return DESTINATION_NOT_FOUND;
 }
 
 /*------------------------------------------------------------------------------*/

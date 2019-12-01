@@ -36,7 +36,7 @@ simple Switch
 
 network TestNetwork
 {
-    @display("bgb=388,175");
+    @display("bgb=387,261");
     types:
         channel Channel extends ned.DelayChannel
         {
@@ -59,6 +59,9 @@ network TestNetwork
         switch_3: Switch {
             @display("p=270,135");
         }
+        switch_4: Switch {
+            @display("p=75,205");
+        }
     connections:
         // switch 0
         switch_0.gate++ <--> Channel <--> controller.gate++;
@@ -69,4 +72,6 @@ network TestNetwork
         // switch 3
         switch_3.gate++ <--> Channel <--> switch_1.gate++;
         switch_3.gate++ <--> Channel <--> switch_2.gate++;
+        // switch 4
+        switch_4.gate++ <--> Channel <--> switch_2.gate++;
 }

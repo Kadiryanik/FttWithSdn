@@ -12,8 +12,6 @@
 
 #define MAX_RULE_NUM 20 // TODO: could be dynamic via constructor
 
-#define NEXT_DESTINATION_NOT_KNOWN 0xFF
-
 class FlowRules {
 private:
   Rule rules[MAX_RULE_NUM];

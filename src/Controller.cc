@@ -76,6 +76,9 @@ void Controller::initialize()
 
   // sw 2
   relations->addEdge(SWITCH_2_INDEX, SWITCH_3_INDEX);
+
+  // sw 4
+  relations->addEdge(SWITCH_4_INDEX, SWITCH_2_INDEX);
 }
 
 /*------------------------------------------------------------------------------*/
@@ -98,16 +101,25 @@ void Controller::handleMessage(cMessage *msg)
     sendAdvAck(gate);
 
     delete msg;
+#if WITH_ADMISSION_CONTROL
+  } else if(type == GM_TYPE_DATA || type == GM_TYPE_ADMISSION){
+#else /* WITH_ADMISSION_CONTROL */
   } else if(type == GM_TYPE_DATA){
+#endif /* WITH_ADMISSION_CONTROL */
     int dest = flowRules[CONTROLLER_INDEX].getNextDestination(gMsg->getSource(), gMsg->getDestination(), gMsg->getPort());
-    if(dest != NEXT_DESTINATION_NOT_KNOWN){
+    if(dest != DESTINATION_NOT_FOUND){
       forwardMessageToDest(gMsg, dest);
     } else{ // we have no rule, genarete rules
       vector<int> path = relations->getShortestDistance(getIndexFromId(gMsg->getSource()), getIndexFromId(gMsg->getDestination()));
 
       EV << "handleMessage: shortest path: ";
       for(int i = path.size() - 1; i >= 0; i--){
-        EV << "Switch_" << (path[i] - 1) << " ";
+        int pathIndex = path[i];
+        if(pathIndex == CONTROLLER_INDEX){
+          EV << "Controller ";
+        } else{
+          EV << "Switch_" << (pathIndex - 1) << " ";
+        }
       }
       EV << "\n";
 
@@ -127,7 +139,13 @@ void Controller::handleMessage(cMessage *msg)
 
               EV << "  NextHops: ";
               for(int j = arraySize - 1; j >= 0; j--){ // arraySize - 1 mean pass the us
-                EV << "Switch_" << (nextHops[j] - 1) << " ";
+                int pathIndex = nextHops[j];
+                if(pathIndex == CONTROLLER_INDEX){
+                  EV << "Controller ";
+                } else{
+                  EV << "Switch_" << (pathIndex - 1) << " ";
+                }
+               
                 array[offset++] = getIdFromIndex(nextHops[j]);
               }
               EV << "\n";
@@ -202,7 +220,7 @@ void Controller::forwardMessageToDest(GeneralMessage *gMsg, int destination)
     return;
   }
 
-  EV << "forwardMessageToDest: Forwarding message on gate[" << gateNum << "] to " << (getIndexFromId(destination) - 1) << "\n";
+  EV << "forwardMessageToDest: Forwarding message on gate[" << gateNum << "] to Switch_" << (getIndexFromId(destination) - 1) << "\n";
   // $o and $i suffix is used to identify the input/output part of a two way gate
   send(gMsg, "gate$o", gateNum);
 }
@@ -211,17 +229,11 @@ void Controller::forwardMessageToDest(GeneralMessage *gMsg, int destination)
 /*------------------------------------------------------------------------------*/
 void Controller::sendAdvAck(int gateNum)
 {
-  // Create message object and set header fields.
-  GeneralMessage *gMsg = new GeneralMessage(NULL);
+  GeneralMessage *gMsg = generateMesagge(GM_TYPE_ADVERTISE_ACK, 0, 0, NULL);
   if(gMsg == NULL){
     EV << "sendAdvAck: Message generate failed!\n";
     return;
   }
-
-  gMsg->setType(GM_TYPE_ADVERTISE_ACK);
-  gMsg->setSource(id);
-  gMsg->setDestination(0);
-  gMsg->setPort(0);
 
   EV << "sendAdvAck: Sending to gate[" << gateNum << "]\n";
   send(gMsg, "gate$o", gateNum);
