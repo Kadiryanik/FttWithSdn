@@ -127,7 +127,7 @@ void Controller::handleMessage(cMessage *msg)
           if(path[i] == CONTROLLER_INDEX){
             flowRules[CONTROLLER_INDEX].addRule(gMsg->getSource(), gMsg->getDestination(), gMsg->getPort(), getIdFromIndex(path[i - 1]));
           } else{
-            GeneralMessage *fRuleMsg = generateMesagge(GM_TYPE_FLOW_RULE, getIdFromIndex(path[i]), gMsg->getPort(), NULL); // TODO: data may send
+            GeneralMessage *fRuleMsg = generateMesagge(GM_TYPE_FLOW_RULE, getIdFromIndex(path[i]), gMsg->getPort(), (char *)"FLOW-RULE");
             setFRuleFields(fRuleMsg, gMsg->getSource(), gMsg->getDestination(), gMsg->getPort(), getIdFromIndex(path[i - 1]));
 
             vector<int> nextHops = relations->getShortestDistance(CONTROLLER_INDEX, path[i]); // us to message owner path
@@ -225,11 +225,10 @@ void Controller::forwardMessageToDest(GeneralMessage *gMsg, int destination)
   send(gMsg, "gate$o", gateNum);
 }
 
-
 /*------------------------------------------------------------------------------*/
 void Controller::sendAdvAck(int gateNum)
 {
-  GeneralMessage *gMsg = generateMesagge(GM_TYPE_ADVERTISE_ACK, 0, 0, NULL);
+  GeneralMessage *gMsg = generateMesagge(GM_TYPE_ADVERTISE_ACK, 0, 0, (char *)"ADV-ACK");
   if(gMsg == NULL){
     EV << "sendAdvAck: Message generate failed!\n";
     return;

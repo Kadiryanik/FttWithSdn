@@ -42,6 +42,20 @@ private:
 };
 
 Define_Module(Switch);
+/*------------------------------------------------------------------------------*/
+static void printIndexInHR(int index, int withEndLine)
+{
+  if(index == CONTROLLER_INDEX){
+    EV << "Controller";
+  } else{
+    EV << "Switch_";
+    EV << (index - 1);
+  }
+
+  if(withEndLine){
+    EV << "\n";
+  }
+}
 
 /*------------------------------------------------------------------------------*/
 Switch::Switch()
@@ -129,12 +143,8 @@ void Switch::handleMessage(cMessage *msg)
     // destination area is not valid for advertisement messages so check them first
     int type = gMsg->getType();
     if(type == GM_TYPE_ADVERTISE){
-      int srcIndex = getIndexFromId(gMsg->getSource());
-      if(srcIndex == CONTROLLER_INDEX){
-        EV << "handleMessage: Adv message received from Controller\n";
-      } else{
-        EV << "handleMessage: Adv message received from Switch_" << (srcIndex - 1) << "\n";
-      }
+      EV << "handleMessage: Adv message received from ";
+      printIndexInHR(getIndexFromId(gMsg->getSource()), 1);
 
       int gate = msg->getArrivalGate()->getIndex();
       gateToDest[gate] = gMsg->getSource();
@@ -148,20 +158,21 @@ void Switch::handleMessage(cMessage *msg)
     } else if(gMsg->getDestination() == id) { // check is message for us
 #endif /* WITH_ADMISSION_CONTROL */
       if(type == GM_TYPE_DATA){
-        int srcIndex = getIndexFromId(gMsg->getSource());
-        if(srcIndex == CONTROLLER_INDEX){
-          EV << "handleMessage: Message " << msg << " received from Controller, send back\n";
-        } else{
-          EV << "handleMessage: Message " << msg << " received from Switch_" << (srcIndex - 1) << ", send back\n";
-        }
+        EV << "handleMessage: Message " << msg << " received from "; 
+        printIndexInHR(getIndexFromId(gMsg->getSource()), 0);
+        EV << " send back\n";
 
-        char data[] = "HELLO-BACK"; // TODO: add src-seq count in message
+        char data[30];
+        sprintf(data, "DATA-sw-%d-to-%d", getIndexFromId(id) - 1, getIndexFromId(gMsg->getSource()) - 1);
+
         GeneralMessage *reply = generateMesagge(GM_TYPE_DATA, gMsg->getSource(), 0, data);
         scheduleAt(simTime() + 0.5, reply);
 
         replied |= (1 << getIndexFromId(gMsg->getSource())); // set flag to cancelEvent
       } else if(type == GM_TYPE_FLOW_RULE){
-        EV << "handleMessage: FlowRule received from ID:" << gMsg->getSource() << "\n";
+        EV << "handleMessage: FlowRule received from ";
+        printIndexInHR(getIndexFromId(gMsg->getSource()), 1);
+
         flowRules.addRule(gMsg->getFRuleSource(), gMsg->getFRuleDestination(), gMsg->getFRulePort(), gMsg->getFRuleNextDestination());
       } else{
         EV << "handleMessage: Unknown message type!\n";
@@ -213,13 +224,9 @@ void Switch::forwardMessage(GeneralMessage *gMsg)
     }
 #endif /* WITH_ADMISSION_CONTROL */
     if(gMsg->getType() == GM_TYPE_FLOW_RULE){
-      int srcIndex = getIndexFromId(dest);
-        if(srcIndex == CONTROLLER_INDEX){
-          EV << "forwardMessage: FATAL! (nextHop is Controller and not connected to our gates!\n";
-        } else{
-          EV << "forwardMessage: FATAL! (nextHop is Switch_" << (srcIndex - 1) << " connected to our gates!\n";
-        }
-      
+      EV << "forwardMessage: FATAL! (nextHop is ";
+      printIndexInHR(getIndexFromId(dest), 0);
+      EV << " and not connected to our gates!\n";
     }
     gateNum = defaultRoute;
   }
@@ -248,7 +255,7 @@ GeneralMessage* Switch::generateMesagge(int type, int dest, int port, char *data
 /*------------------------------------------------------------------------------*/
 void Switch::sendAdv(int gateNum)
 {
-  GeneralMessage *gMsg = generateMesagge(GM_TYPE_ADVERTISE, 0, 0, NULL);
+  GeneralMessage *gMsg = generateMesagge(GM_TYPE_ADVERTISE, 0, 0, (char *)"ADV");
   if(gMsg == NULL){
     EV << "sendAdv: Message generate failed!\n";
     return;
@@ -261,7 +268,7 @@ void Switch::sendAdv(int gateNum)
 /*------------------------------------------------------------------------------*/
 void Switch::sendAdvAck(int gateNum)
 {
-  GeneralMessage *gMsg = generateMesagge(GM_TYPE_ADVERTISE_ACK, 0, 0, NULL);
+  GeneralMessage *gMsg = generateMesagge(GM_TYPE_ADVERTISE_ACK, 0, 0, (char *)"ADV-ACK");
   if(gMsg == NULL){
     EV << "sendAdvAck: Message generate failed!\n";
     return;
