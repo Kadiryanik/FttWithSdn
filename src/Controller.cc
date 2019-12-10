@@ -27,10 +27,14 @@ protected:
   virtual void forwardMessage(GeneralMessage *gMsg);
 private:
   void forwardMessageToDest(GeneralMessage *gMsg, int destination);
+  void forwardMessageAllGate(GeneralMessage *gMsg);
   void sendAdvAck(int gateNum);
   GeneralMessage *generateMesagge(int type, int dest, int port, char *data);
   void setFRuleFields(GeneralMessage *gMsg, int src, int dest, int port, int nextDest);
   void setNextHopField(GeneralMessage *gMsg, int arraySize, int *array);
+  void setTriggerMessageFields(GeneralMessage *gMsg, int sizes, int *ids, double *times);
+
+  cMessage *timerEvent;
   int id;
   Relation* relations;
   FlowRules flowRules[TOTAL_SWITCH_NUM + 1]; // +1 for controller
@@ -43,6 +47,7 @@ Define_Module(Controller);
 /*------------------------------------------------------------------------------*/
 Controller::Controller()
 {
+  timerEvent = NULL;
   relations = NULL;
 
   for(int i = 0; i < EXPECTED_GATE_MAX_NUM; i++){
@@ -55,6 +60,7 @@ Controller::Controller()
 /*------------------------------------------------------------------------------*/
 Controller::~Controller()
 {
+  cancelAndDelete(timerEvent);
   if(relations != NULL){
     delete relations;
   }
@@ -71,6 +77,19 @@ void Controller::initialize()
 /*------------------------------------------------------------------------------*/
 void Controller::handleMessage(cMessage *msg)
 {
+  if(msg == timerEvent){
+    GeneralMessage *gMsg = generateMesagge(GM_TYPE_TM, BROADCAST_ID, 0, (char *)"TM");
+    int ids[2] = { 150, 155 };
+    double times[2];
+    times[0] = simTime().dbl() + 0.1;
+    times[1] = simTime().dbl() + 0.2;
+
+    setTriggerMessageFields(gMsg, 2, ids, times);
+
+    forwardMessageAllGate(gMsg);
+    return; // this is self message so do not continue the function
+  }
+
   GeneralMessage *gMsg = check_and_cast<GeneralMessage *>(msg);
   if(gMsg == NULL){
     EV << "handleMessage: Message cast failed!\n";
@@ -160,6 +179,7 @@ void Controller::handleMessage(cMessage *msg)
       }
     }
     EV << gMsg->getGateInfo(arrSize - 1) << "\n";
+    delete gMsg;
 
     gateInfoCounter++; // increment the received GATE_INFO message counter
 
@@ -169,6 +189,12 @@ void Controller::handleMessage(cMessage *msg)
       relations->printShortestPath(4, 5);
       relations->printShortestPath(5, 1);
       relations->printShortestPath(5, 2);
+
+      // TODO: generate correct EC series
+
+      // set timer to start EC frames
+      timerEvent = new cMessage("event");
+      scheduleAt(simTime() + 0.01, timerEvent);
     }
   }
 }
@@ -234,6 +260,20 @@ void Controller::forwardMessageToDest(GeneralMessage *gMsg, int destination)
 }
 
 /*------------------------------------------------------------------------------*/
+void Controller::forwardMessageAllGate(GeneralMessage *gMsg)
+{
+  int i, n = gateSize("gate");
+
+  EV << "forwardMessageAllGate: Forwarding message!\n";
+  // $o and $i suffix is used to identify the input/output part of a two way gate
+  for(i = 0; i < n; i++){
+    GeneralMessage *copy = gMsg->dup();
+    send(copy, "gate$o", i);
+  }
+  delete gMsg;
+}
+
+/*------------------------------------------------------------------------------*/
 void Controller::sendAdvAck(int gateNum)
 {
   GeneralMessage *gMsg = generateMesagge(GM_TYPE_ADVERTISE_ACK, 0, 0, (char *)"ADV-ACK");
@@ -277,5 +317,17 @@ void Controller::setNextHopField(GeneralMessage *gMsg, int arraySize, int *array
   gMsg->setNextHopArraySize(arraySize);
   for(int i = 0; i < arraySize; i++){
     gMsg->setNextHop(i, array[i]);
+  }
+}
+
+/*------------------------------------------------------------------------------*/
+void Controller::setTriggerMessageFields(GeneralMessage *gMsg, int sizes, int *ids, double *times)
+{
+  gMsg->setTriggerMessageIdArraySize(sizes);
+  gMsg->setTriggerMessageTimeArraySize(sizes);
+
+  for(int i = 0; i < sizes; i++){
+    gMsg->setTriggerMessageId(i, ids[i]);
+    gMsg->setTriggerMessageTime(i, times[i]);
   }
 }

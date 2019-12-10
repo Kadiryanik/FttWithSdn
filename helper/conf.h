@@ -20,10 +20,14 @@
 #define GM_TYPE_ADMISSION     0x05
 #endif /* WITH_ADMISSION_CONTROL */
 #define GM_TYPE_GATE_INFO     0x06
+#define GM_TYPE_TM            0x07
 
 /*------------------------------------------------------------------------------*/
 #define CONTROLLER_ID    0
 #define CONTROLLER_INDEX 0
+
+/*------------------------------------------------------------------------------*/
+#define BROADCAST_ID  0xFF
 
 /*------------------------------------------------------------------------------*/
 #define TOTAL_SWITCH_NUM 5 // TODO: must update when topology changed

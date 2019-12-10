@@ -10,6 +10,9 @@ message GeneralMessage
     int fRulePort;
     int fRuleNextDestination;
 
+    int triggerMessageId[];
+    double triggerMessageTime[];
+
     int nextHop[];
     int gateInfo[];
 }

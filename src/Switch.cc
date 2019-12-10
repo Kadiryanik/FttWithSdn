@@ -140,6 +140,13 @@ void Switch::handleMessage(cMessage *msg)
       }
 
       delete msg; // free received msg
+    } else if(type == GM_TYPE_TM){
+      EV << "TM received!\n";
+      for(int i = 0; i < gMsg->getTriggerMessageIdArraySize(); i++){
+        EV << " msgId: " << gMsg->getTriggerMessageId(i) << " -> " << gMsg->getTriggerMessageTime(i) << "\n";
+      }
+
+      delete gMsg;
     } else {
       forwardMessage(gMsg);
     }
