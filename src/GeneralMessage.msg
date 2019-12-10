@@ -11,4 +11,5 @@ message GeneralMessage
     int fRuleNextDestination;
 
     int nextHop[];
+    int gateInfo[];
 }

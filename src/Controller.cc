@@ -35,6 +35,7 @@ private:
   Relation* relations;
   FlowRules flowRules[TOTAL_SWITCH_NUM + 1]; // +1 for controller
   int gateToDest[EXPECTED_GATE_MAX_NUM];
+  int gateInfoCounter;
 };
 
 Define_Module(Controller);
@@ -47,6 +48,8 @@ Controller::Controller()
   for(int i = 0; i < EXPECTED_GATE_MAX_NUM; i++){
     gateToDest[i] = NULL_GATE_VAL;
   }
+  
+  gateInfoCounter = 0;
 }
 
 /*------------------------------------------------------------------------------*/
@@ -63,22 +66,6 @@ void Controller::initialize()
   id = par("id");
 
   relations = new Relation(TOTAL_SWITCH_NUM + 1); // +1 for controller
-
-  // controller
-  relations->addEdge(CONTROLLER_INDEX, SWITCH_0_INDEX);
-  relations->addEdge(CONTROLLER_INDEX, SWITCH_1_INDEX);
-
-  // sw 0
-  relations->addEdge(SWITCH_0_INDEX, SWITCH_2_INDEX);
-
-  // sw 1
-  relations->addEdge(SWITCH_1_INDEX, SWITCH_3_INDEX);
-
-  // sw 2
-  relations->addEdge(SWITCH_2_INDEX, SWITCH_3_INDEX);
-
-  // sw 4
-  relations->addEdge(SWITCH_4_INDEX, SWITCH_2_INDEX);
 }
 
 /*------------------------------------------------------------------------------*/
@@ -90,11 +77,12 @@ void Controller::handleMessage(cMessage *msg)
     return;
   }
 
+  int type = gMsg->getType();
+
   if(gMsg->getSource() != CONTROLLER_ID){
-    EV << "handleMessage: Message received from Switch_" << (getIndexFromId(gMsg->getSource()) - 1) << "\n";
+    EV << "handleMessage: Message [" << type << "] received from Switch_" << (getIndexFromId(gMsg->getSource()) - 1) << "\n";
   }
 
-  int type = gMsg->getType();
   if(type == GM_TYPE_ADVERTISE){
     int gate = msg->getArrivalGate()->getIndex();
     gateToDest[gate] = gMsg->getSource();
@@ -145,7 +133,7 @@ void Controller::handleMessage(cMessage *msg)
                 } else{
                   EV << "Switch_" << (pathIndex - 1) << " ";
                 }
-               
+
                 array[offset++] = getIdFromIndex(nextHops[j]);
               }
               EV << "\n";
@@ -162,6 +150,26 @@ void Controller::handleMessage(cMessage *msg)
     }
   } else if(type == GM_TYPE_FLOW_RULE){
     forwardMessage(gMsg);
+  } else if(type == GM_TYPE_GATE_INFO){
+    EV << "  GateInfo: Switch_" << (getIndexFromId(gMsg->getSource()) - 1) << ": ";
+    unsigned int i, arrSize = gMsg->getGateInfoArraySize();
+    for(i = 0; i < arrSize; i++){
+      relations->addEdge(getIndexFromId(gMsg->getSource()), getIndexFromId(gMsg->getGateInfo(i)));
+      if(i < arrSize - 1){
+        EV << gMsg->getGateInfo(i) << ", ";
+      }
+    }
+    EV << gMsg->getGateInfo(arrSize - 1) << "\n";
+
+    gateInfoCounter++; // increment the received GATE_INFO message counter
+
+    if(gateInfoCounter == TOTAL_SWITCH_NUM){ // All GATE_INFO message received from switches
+      // Test the relations
+      relations->printShortestPath(1, 3);
+      relations->printShortestPath(4, 5);
+      relations->printShortestPath(5, 1);
+      relations->printShortestPath(5, 2);
+    }
   }
 }
 

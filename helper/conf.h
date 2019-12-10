@@ -16,10 +16,10 @@
 #define GM_TYPE_FLOW_RULE     0x02
 #define GM_TYPE_ADVERTISE     0x03
 #define GM_TYPE_ADVERTISE_ACK 0x04
-
 #if WITH_ADMISSION_CONTROL
 #define GM_TYPE_ADMISSION     0x05
 #endif /* WITH_ADMISSION_CONTROL */
+#define GM_TYPE_GATE_INFO     0x06
 
 /*------------------------------------------------------------------------------*/
 #define CONTROLLER_ID    0

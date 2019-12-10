@@ -32,6 +32,8 @@ private:
   GeneralMessage *generateMesagge(int type, int dest, int port, char *data);
   void sendAdv(int gateNum);
   void sendAdvAck(int gateNum);
+  void setGateInfoFields(GeneralMessage *gMsg, int *gateInfo, int gateNum);
+
   cMessage *timerEvent;
   FlowRules flowRules;
   int advDone;
@@ -42,20 +44,6 @@ private:
 };
 
 Define_Module(Switch);
-/*------------------------------------------------------------------------------*/
-static void printIndexInHR(int index, int withEndLine)
-{
-  if(index == CONTROLLER_INDEX){
-    EV << "Controller";
-  } else{
-    EV << "Switch_";
-    EV << (index - 1);
-  }
-
-  if(withEndLine){
-    EV << "\n";
-  }
-}
 
 /*------------------------------------------------------------------------------*/
 Switch::Switch()
@@ -84,8 +72,6 @@ void Switch::initialize()
   // get id, too
   id = par("id");
 
-  replied = 0;
-
   // set timer to start advertisement
   timerEvent = new cMessage("event");
   scheduleAt(simTime() + 0.1, timerEvent);
@@ -108,31 +94,15 @@ void Switch::handleMessage(cMessage *msg)
       advDone = 1;
       EV << "handleMessage: Advertising done!\n";
     }
-    if(id == SWITCH_2_ID && !(replied & (1 << SWITCH_3_INDEX))){
-      // initilize to send data to controller
-      char data[] = "DATA-sw2-to-sw3";
-      GeneralMessage *gMsg = generateMesagge(GM_TYPE_DATA, SWITCH_3_ID, 0, data);
-      scheduleAt(simTime() + 0.1, gMsg);
 
-      // schedule periodicly
-      scheduleAt(simTime() + 5, timerEvent);
-    } else if(id == SWITCH_0_ID && !(replied & (1 << SWITCH_1_INDEX))){
-      // initilize to send data to controller
-      char data[] = "DATA-sw0-to-sw1";
-      GeneralMessage *gMsg = generateMesagge(GM_TYPE_DATA, SWITCH_1_ID, 0, data);
-      scheduleAt(simTime() + 0.1, gMsg);
+    // schedule the GATE_INFO message to send controller
+    GeneralMessage *gMsg = generateMesagge(GM_TYPE_GATE_INFO, 0, 0, (char *)"GATE_INFO");
+    setGateInfoFields(gMsg, gateToDest, gateSize("gate"));
+    scheduleAt(simTime() + 0.1, gMsg);
 
-      // schedule periodicly
-      scheduleAt(simTime() + 5, timerEvent);
-    } else if(id == SWITCH_4_ID && !(replied & (1 << SWITCH_0_INDEX))){
-      // initilize to send data to controller
-      char data[] = "DATA-sw4-to-sw0";
-      GeneralMessage *gMsg = generateMesagge(GM_TYPE_DATA, SWITCH_0_ID, 0, data);
-      scheduleAt(simTime() + 0.1, gMsg);
-
-      // schedule periodicly
-      scheduleAt(simTime() + 5, timerEvent);
-    }
+    /* TODO: we assume it was forwarded to CONTROLLER, may ACK can be added.
+     * Repeat the message until we receive an ACK.
+     * scheduleAt(simTime() + 5, timerEvent); */
   } else{
     GeneralMessage *gMsg = check_and_cast<GeneralMessage *>(msg);
     if(gMsg == NULL){
@@ -160,15 +130,6 @@ void Switch::handleMessage(cMessage *msg)
       if(type == GM_TYPE_DATA){
         EV << "handleMessage: Message " << msg << " received from "; 
         printIndexInHR(getIndexFromId(gMsg->getSource()), 0);
-        EV << " send back\n";
-
-        char data[30];
-        sprintf(data, "DATA-sw-%d-to-%d", getIndexFromId(id) - 1, getIndexFromId(gMsg->getSource()) - 1);
-
-        GeneralMessage *reply = generateMesagge(GM_TYPE_DATA, gMsg->getSource(), 0, data);
-        scheduleAt(simTime() + 0.5, reply);
-
-        replied |= (1 << getIndexFromId(gMsg->getSource())); // set flag to cancelEvent
       } else if(type == GM_TYPE_FLOW_RULE){
         EV << "handleMessage: FlowRule received from ";
         printIndexInHR(getIndexFromId(gMsg->getSource()), 1);
@@ -276,4 +237,13 @@ void Switch::sendAdvAck(int gateNum)
 
   EV << "sendAdvAck: Sending to gate[" << gateNum << "]\n";
   send(gMsg, "gate$o", gateNum);
+}
+
+/*------------------------------------------------------------------------------*/
+void Switch::setGateInfoFields(GeneralMessage *gMsg, int *gateInfo, int gateNum)
+{
+  gMsg->setGateInfoArraySize(gateNum);
+  for(int i = 0; i < gateNum; i++){
+    gMsg->setGateInfo(i, gateInfo[i]);
+  }
 }

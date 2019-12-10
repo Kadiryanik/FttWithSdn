@@ -40,7 +40,7 @@ network TestNetwork
     types:
         channel Channel extends ned.DelayChannel
         {
-            delay = 10ms;
+            delay = 0;
         }
     submodules:
         controller: Controller {
@@ -68,10 +68,13 @@ network TestNetwork
         // switch 1
         switch_1.gate++ <--> Channel <--> controller.gate++;
         // switch 2
+        switch_2.gate++ <--> Channel <--> controller.gate++;
         switch_2.gate++ <--> Channel <--> switch_0.gate++;
         // switch 3
+        switch_3.gate++ <--> Channel <--> controller.gate++;
         switch_3.gate++ <--> Channel <--> switch_1.gate++;
         switch_3.gate++ <--> Channel <--> switch_2.gate++;
         // switch 4
+        switch_4.gate++ <--> Channel <--> controller.gate++;
         switch_4.gate++ <--> Channel <--> switch_2.gate++;
 }
