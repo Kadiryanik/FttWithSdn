@@ -12,7 +12,7 @@
 #include <bits/stdc++.h>
 #include "conf.h"
 
-using namespace std; 
+using namespace std;
 
 class Relation {
 public:

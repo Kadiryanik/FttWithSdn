@@ -21,6 +21,10 @@
 #endif /* WITH_ADMISSION_CONTROL */
 #define GM_TYPE_GATE_INFO     0x06
 #define GM_TYPE_TM            0x07
+/*------------------------------------------------------------------------------*/
+#define MESSAGE_ID_0          0xF0
+#define MESSAGE_ID_1          0xF1
+#define MESSAGE_ID_2          0xF2
 
 /*------------------------------------------------------------------------------*/
 #define CONTROLLER_ID    0
@@ -51,5 +55,10 @@
 #define EXPECTED_GATE_MAX_NUM 10
 #define DESTINATION_NOT_FOUND 0xFD
 #define NULL_GATE_VAL         0xFF
+
+/*------------------------------------------------------------------------------*/
+#define EC_TOTAL_SLOT_NUM          10
+#define EC_MAX_SYNC_SLOT_NUM       6
+#define EC_EACH_SLOT_LEN_IN_SEC    (0.025)
 
 #endif /* HELPER_CONF_H_ */

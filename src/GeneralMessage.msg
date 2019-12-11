@@ -1,6 +1,7 @@
 message GeneralMessage
 {
     int type;
+    int messageId;
     int source;
     int destination;
     int port;
