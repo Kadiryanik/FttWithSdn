@@ -25,6 +25,7 @@ public:
 protected:
   virtual void initialize() override;
   virtual void handleMessage(cMessage *msg) override;
+  virtual void refreshDisplay() const override;
   virtual void forwardMessage(GeneralMessage *gMsg);
 private:
   void forwardMessageToDest(GeneralMessage *gMsg, int destination);
@@ -34,14 +35,26 @@ private:
   void setFRuleFields(GeneralMessage *gMsg, int src, int dest, int port, int nextDest);
   void setNextHopField(GeneralMessage *gMsg, int arraySize, int *array);
   void setTriggerMessageFields(GeneralMessage *gMsg, TriggerMessage *tm);
+  void checkAndSchedule();
+  void generateRulesAndSend(int src, int dest, int port);
 
   cMessage *timerEvent;
+  cMessage *timerTrigger;
   int id;
   Relation* relations;
   FlowRules flowRules[TOTAL_SWITCH_NUM + 1]; // +1 for controller
   int gateToDest[EXPECTED_GATE_MAX_NUM];
+  MessageList messageList;
+  TriggerMessage* currentTriggerMessage;
   int gateInfoCounter;
   ElementaryCycle* currentEC;
+  int debugCurrentEC;
+
+  // debug variables
+  long numReceived;
+  long numSent;
+  long numForward;
+  long numMessage;
 };
 
 Define_Module(Controller);
@@ -56,16 +69,23 @@ Controller::Controller()
     gateToDest[i] = NULL_GATE_VAL;
   }
 
+  currentTriggerMessage = new TriggerMessage();
   gateInfoCounter = 0;
+
+  numReceived = 0;
+  numSent = 0;
+  numForward = 0;
+  numMessage = 0;
 }
 
 /*------------------------------------------------------------------------------*/
 Controller::~Controller()
 {
+  if(currentTriggerMessage != NULL) delete currentTriggerMessage;
+
   cancelAndDelete(timerEvent);
-  if(relations != NULL){
-    delete relations;
-  }
+  cancelAndDelete(timerTrigger);
+  if(relations != NULL) delete relations;
 }
 
 /*------------------------------------------------------------------------------*/
@@ -74,6 +94,11 @@ void Controller::initialize()
   id = par("id");
 
   relations = new Relation(TOTAL_SWITCH_NUM + 1); // +1 for controller
+
+  WATCH(debugCurrentEC);
+
+  // init pointer, schedule when tm received
+  timerTrigger = new cMessage("trigger");
 
   /* 
    * MESSAGE_ID_0: 6 message per sec
@@ -105,11 +130,15 @@ void Controller::initialize()
 /*------------------------------------------------------------------------------*/
 void Controller::handleMessage(cMessage *msg)
 {
+  numMessage = messageList.getMessageCount();
+  refreshDisplay();
+
   if(msg == timerEvent){
     // TODO: cancel if exist any timer except this
 
     // set currentEC
     currentEC = currentEC->next;
+    debugCurrentEC = currentEC->elementaryCycleId;
 
     // generate TM message
     GeneralMessage *gMsg = generateMesagge(GM_TYPE_TM, 0, BROADCAST_ID, 0, (char *)"TM");
@@ -120,6 +149,18 @@ void Controller::handleMessage(cMessage *msg)
 
     // schedule next EC start point to wake up
     scheduleAt(simTime() + (EC_TOTAL_SLOT_NUM * EC_EACH_SLOT_LEN_IN_SEC), timerEvent);
+    checkAndSchedule();
+    return; // this is self message so do not continue the function
+  } else if(msg == timerTrigger){
+    GeneralMessage* message = messageList.get(currentTriggerMessage->getId(currentTriggerMessage->getOffset()));
+
+    int dest = flowRules[CONTROLLER_INDEX].getNextDestination(message->getSource(), message->getDestination(), message->getPort());
+    if(dest != DESTINATION_NOT_FOUND){
+      forwardMessageToDest(message, dest);
+    } else{
+      EV << "timerTrigger: DESTINATION_NOT_FOUND!\n"; // didnt expect
+    }
+    checkAndSchedule();
     return; // this is self message so do not continue the function
   }
 
@@ -146,52 +187,21 @@ void Controller::handleMessage(cMessage *msg)
 #else /* WITH_ADMISSION_CONTROL */
   } else if(type == GM_TYPE_DATA){
 #endif /* WITH_ADMISSION_CONTROL */
-    EV << "handleMessage: DATA[" << gMsg->getMessageId() << "] received from Switch_" << (getIndexFromId(gMsg->getSource()) - 1) << "\n";
+    if(gMsg->getDestination() != CONTROLLER_ID){
+      messageList.add(gMsg);
+      checkAndSchedule();
+    } else{
+      numReceived++;
+      EV << "handleMessage: DATA[" << gMsg->getMessageId() << "] received from Switch_" << (getIndexFromId(gMsg->getSource()) - 1) << "\n";
+      delete msg;
+    }
 
-    delete msg;
 #if 0 // TODO: this area will be usefull in asynchronous traffic
     int dest = flowRules[CONTROLLER_INDEX].getNextDestination(gMsg->getSource(), gMsg->getDestination(), gMsg->getPort());
     if(dest != DESTINATION_NOT_FOUND){
       forwardMessageToDest(gMsg, dest);
     } else{ // we have no rule, genarete rules
-      vector<int> path = relations->getShortestDistance(getIndexFromId(gMsg->getSource()), getIndexFromId(gMsg->getDestination()));
-
-      EV << "handleMessage: shortest path: ";
-      for(int i = path.size() - 1; i >= 0; i--){
-        printIndexInHR(path[i], 0);
-      }
-      EV << "\n";
-
-      for(int i = path.size() - 1; i > 0; i--){ // do not checking path[0] because of that the last path is the destination, do not send it any rule
-          if(path[i] == CONTROLLER_INDEX){
-            flowRules[CONTROLLER_INDEX].addRule(gMsg->getSource(), gMsg->getDestination(), gMsg->getPort(), getIdFromIndex(path[i - 1]));
-          } else{
-            GeneralMessage *fRuleMsg = generateMesagge(GM_TYPE_FLOW_RULE, 0, getIdFromIndex(path[i]), gMsg->getPort(), (char *)"FLOW-RULE");
-            setFRuleFields(fRuleMsg, gMsg->getSource(), gMsg->getDestination(), gMsg->getPort(), getIdFromIndex(path[i - 1]));
-
-            vector<int> nextHops = relations->getShortestDistance(CONTROLLER_INDEX, path[i]); // us to message owner path
-            
-            int arraySize = nextHops.size() - 1;
-            if(arraySize > 0){
-              int array[arraySize];
-              int offset = 0;
-
-              EV << "  NextHops: ";
-              for(int j = arraySize - 1; j >= 0; j--){ // arraySize - 1 mean pass the us
-                printIndexInHR(nextHops[j], 0);
-                array[offset++] = getIdFromIndex(nextHops[j]);
-              }
-              EV << "\n";
-
-              setNextHopField(fRuleMsg, arraySize, array);
-            } else{
-              EV << "  NextHops: null! Controller to Switch_" << (path[i] - 1) << "\n";
-              setNextHopField(fRuleMsg, 0, NULL);
-            }
-
-            scheduleAt(simTime() + 0.1 + uniform(1, 2), fRuleMsg); // TODO: make the timer value little smart 
-          }
-      }
+      
     }
 #endif
   } else if(type == GM_TYPE_FLOW_RULE){
@@ -209,11 +219,24 @@ void Controller::handleMessage(cMessage *msg)
 
     gateInfoCounter++; // increment the received GATE_INFO message counter
     if(gateInfoCounter == TOTAL_SWITCH_NUM){ // All GATE_INFO message received from switches
-      // Test the relations
-      relations->printShortestPath(1, 3);
-      relations->printShortestPath(4, 5);
-      relations->printShortestPath(5, 1);
-      relations->printShortestPath(5, 2);
+#if MESSAGE_ID_0_ENABLED
+      generateRulesAndSend(MESSAGE_ID_0_SRC, MESSAGE_ID_0_DEST, MESSAGE_ID_0_PORT);
+#endif /* MESSAGE_ID_0_ENABLED */
+#if MESSAGE_ID_1_ENABLED
+      generateRulesAndSend(MESSAGE_ID_1_SRC, MESSAGE_ID_1_DEST, MESSAGE_ID_1_PORT);
+#endif /* MESSAGE_ID_1_ENABLED */
+#if MESSAGE_ID_2_ENABLED
+      generateRulesAndSend(MESSAGE_ID_2_SRC, MESSAGE_ID_2_DEST, MESSAGE_ID_2_PORT);
+#endif /* MESSAGE_ID_2_ENABLED */
+#if MESSAGE_ID_3_ENABLED
+      generateRulesAndSend(MESSAGE_ID_3_SRC, MESSAGE_ID_3_DEST, MESSAGE_ID_3_PORT);
+#endif /* MESSAGE_ID_3_ENABLED */
+#if MESSAGE_ID_4_ENABLED
+      generateRulesAndSend(MESSAGE_ID_4_SRC, MESSAGE_ID_4_DEST, MESSAGE_ID_4_PORT);
+#endif /* MESSAGE_ID_4_ENABLED */
+#if MESSAGE_ID_5_ENABLED
+      generateRulesAndSend(MESSAGE_ID_5_SRC, MESSAGE_ID_5_DEST, MESSAGE_ID_5_PORT);
+#endif /* MESSAGE_ID_5_ENABLED */
 
       // set timer to start EC frames
       timerEvent = new cMessage("event");
@@ -255,6 +278,11 @@ void Controller::forwardMessage(GeneralMessage *gMsg)
     }
   }
 
+  if(gMsg->getSource() == CONTROLLER_ID){
+    numSent++;
+  } else{
+    numForward++;
+  }
   EV << "forwardMessage: Forwarding message on gate[" << gateNum << "]\n";
   // $o and $i suffix is used to identify the input/output part of a two way gate
   send(gMsg, "gate$o", gateNum);
@@ -277,6 +305,12 @@ void Controller::forwardMessageToDest(GeneralMessage *gMsg, int destination)
   if(gateNum >= n){
     EV << "forwardMessageToDest: Forwarding message failed!\n";
     return;
+  }
+
+  if(gMsg->getSource() == CONTROLLER_ID){
+    numSent++;
+  } else{
+    numForward++;
   }
 
   EV << "forwardMessageToDest: Forwarding message on gate[" << gateNum << "] to Switch_" << (getIndexFromId(destination) - 1) << "\n";
@@ -353,9 +387,13 @@ void Controller::setTriggerMessageFields(GeneralMessage *gMsg, TriggerMessage *t
   int ids[usedNum];
   double times[usedNum];
 
+  currentTriggerMessage->clear();
+
   for(int i = 0; i < usedNum; i++){
     ids[i] = tm->getId(i);
-    times[i] = simTime().dbl() + tm->getTime(i);
+    times[i] = simTime().dbl() + CHANNEL_DELAYS + tm->getTime(i); // add alfa (CHANNEL_DELAYS)
+
+    currentTriggerMessage->add(ids[i], times[i]);
   }
 
   gMsg->setTriggerMessageIdArraySize(usedNum);
@@ -365,4 +403,83 @@ void Controller::setTriggerMessageFields(GeneralMessage *gMsg, TriggerMessage *t
     gMsg->setTriggerMessageId(i, ids[i]);
     gMsg->setTriggerMessageTime(i, times[i]);
   }
+}
+
+/*------------------------------------------------------------------------------*/
+void Controller::checkAndSchedule(){
+  if(timerTrigger->isScheduled()){ // if not scheduled
+    return; // timerTrigger already scheduled
+  }
+
+  int i;
+  for(i = 0; i < currentTriggerMessage->getUsedNum(); i++){
+    if(simTime().dbl() + CHANNEL_DELAYS < currentTriggerMessage->getTime(i)){
+      break; // not passed first slot found
+    }
+  }
+
+  for(; i < currentTriggerMessage->getUsedNum(); i++){
+    if(messageList.check(currentTriggerMessage->getId(i)) == ML_MSG_EXIST){
+      EV << "[" << currentTriggerMessage->getId(i) << "->" << currentTriggerMessage->getTime(i) << "] scheduled!\n";
+      currentTriggerMessage->setOffset(i); // point next one
+      scheduleAt(currentTriggerMessage->getTime(i), timerTrigger);
+      return;
+    }
+  }
+}
+
+void Controller::generateRulesAndSend(int src, int dest, int port){
+  vector<int> path = relations->getShortestDistance(getIndexFromId(src), getIndexFromId(dest));
+
+  EV << "generateRulesAndSend: shortest path: ";
+  printIndexInHR(getIndexFromId(src), 0);
+  EV << " -> ";
+  printIndexInHR(getIndexFromId(dest), 0);
+  EV << ":";
+  for(int i = path.size() - 1; i >= 0; i--){
+    EV << " ";
+    printIndexInHR(path[i], 0);
+  }
+  EV << "\n";
+
+
+
+  for(int i = path.size() - 1; i > 0; i--){ // do not checking path[0] because of that the last path is the destination, do not send it any rule
+      if(path[i] == CONTROLLER_INDEX){
+        flowRules[CONTROLLER_INDEX].addRule(src, dest, port, getIdFromIndex(path[i - 1]));
+      } else{
+        GeneralMessage *fRuleMsg = generateMesagge(GM_TYPE_FLOW_RULE, 0, getIdFromIndex(path[i]), port, (char *)"FLOW-RULE");
+        setFRuleFields(fRuleMsg, src, dest, port, getIdFromIndex(path[i - 1]));
+#if !CONTROLLER_CONNECTED_ALL_DIRECTLY // TODO: disable when controller not connected directly all node
+        vector<int> nextHops = relations->getShortestDistance(CONTROLLER_INDEX, path[i]); // us to message owner path
+        
+        int arraySize = nextHops.size() - 1;
+        if(arraySize > 0){
+          int array[arraySize];
+          int offset = 0;
+
+          EV << "  NextHops: ";
+          for(int j = arraySize - 1; j >= 0; j--){ // arraySize - 1 mean pass the us
+            printIndexInHR(nextHops[j], 0);
+            array[offset++] = getIdFromIndex(nextHops[j]);
+          }
+          EV << "\n";
+
+          setNextHopField(fRuleMsg, arraySize, array);
+        } else{
+          EV << "  NextHops: null! Controller to Switch_" << (path[i] - 1) << "\n";
+          setNextHopField(fRuleMsg, 0, NULL);
+        }
+#endif
+        forwardMessage(fRuleMsg);
+      }
+  }
+}
+
+/*------------------------------------------------------------------------------*/
+void Controller::refreshDisplay() const
+{
+    char buf[50];
+    sprintf(buf, "R:%ld S:%ld F:%ld L:%ld", numReceived, numSent, numForward, numMessage);
+    getDisplayString().setTagArg("t", 0, buf);
 }

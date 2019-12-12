@@ -40,7 +40,7 @@ network TestNetwork
     types:
         channel Channel extends ned.DelayChannel
         {
-            delay = 0;
+            delay = 20ms;
         }
     submodules:
         controller: Controller {
