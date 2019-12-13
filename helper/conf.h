@@ -21,6 +21,7 @@
 #endif /* WITH_ADMISSION_CONTROL */
 #define GM_TYPE_GATE_INFO     0x06
 #define GM_TYPE_TM            0x07
+#define GM_TYPE_ASYNC         0x08
 
 /*------------------------------------------------------------------------------*/
 #define CONTROLLER_ID    0
@@ -42,6 +43,8 @@
 #define SWITCH_2_ID   (SWITCH_1_ID + 1)
 #define SWITCH_3_ID   (SWITCH_2_ID + 1)
 #define SWITCH_4_ID   (SWITCH_3_ID + 1)
+
+#define SWITCH_IDS { SWITCH_0_ID, SWITCH_1_ID, SWITCH_2_ID, SWITCH_3_ID, SWITCH_4_ID, CONTROLLER_ID }
 
 #define SWITCH_0_INDEX (SWITCH_0_ID - SWITCH_INDEX_OFFSET)
 #define SWITCH_1_INDEX (SWITCH_1_ID - SWITCH_INDEX_OFFSET)
@@ -105,6 +108,7 @@
 #define EC_EACH_SLOT_LEN_IN_SEC    (0.025)
 
 /*------------------------------------------------------------------------------*/
-#define CHANNEL_DELAYS             0.02
+#define CHANNEL_DELAYS                       0.02
+#define CONTROLLER_CHANNEL_DELAY             CHANNEL_DELAYS
 
 #endif /* HELPER_CONF_H_ */

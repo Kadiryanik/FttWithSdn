@@ -59,7 +59,7 @@ double TriggerMessage::getTime(int index){
 }
 
 /*------------------------------------------------------------------------------*/
-int TriggerMessage::setOffset(int offset){
+void TriggerMessage::setOffset(int offset){
   this->offset = offset;
 }
 

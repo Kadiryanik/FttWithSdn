@@ -26,30 +26,38 @@ public:
   Switch();
   virtual ~Switch();
 protected:
-  virtual void forwardMessage(GeneralMessage *gMsg);
   virtual void initialize() override;
   virtual void handleMessage(cMessage *msg) override;
+  virtual void forwardMessage(GeneralMessage *gMsg);
   virtual void refreshDisplay() const override;
 private:
-  GeneralMessage *generateMesagge(int type, int messageId, int dest, int port, char *data);
+  GeneralMessage* generateMesagge(int type, int messageId, int dest, int port, char *data);
   void sendAdv(int gateNum);
   void sendAdvAck(int gateNum);
   void setGateInfoFields(GeneralMessage *gMsg, int *gateInfo, int gateNum);
   void setCurrentTriggerMessage(GeneralMessage *gMsg);
   void checkAndSchedule();
+  void generateTraffic();
+  void handleGeneralMessage(cMessage *msg);
+  GeneralMessage* getNextMessage();
 
-  cMessage *timerEvent;
-  cMessage *trafficGenerator;
-  cMessage *timerTrigger;
-
-  FlowRules flowRules;
+  int id;
   int advDone;
   int defaultRoute;
-  int id;
-  int replied; // TODO: make this more readable
+  cMessage *timerEvent;
+
+  // database
   int gateToDest[EXPECTED_GATE_MAX_NUM];
+  FlowRules flowRules;
   MessageList messageList;
+  MessageList messageListAsync;
+
+  // FTT spesific
   TriggerMessage* currentTriggerMessage;
+  cMessage *trafficGenerator;
+  cMessage *timerTrigger;
+  // used on async traffic
+  double beginningOfNextEC;
 
   // debug variables
   long numReceived;
@@ -61,8 +69,7 @@ private:
 Define_Module(Switch);
 
 /*------------------------------------------------------------------------------*/
-Switch::Switch()
-{
+Switch::Switch(){
   timerEvent = NULL;
   advDone = 0;
 
@@ -71,6 +78,8 @@ Switch::Switch()
     gateToDest[i] = NULL_GATE_VAL;
   }
 
+  beginningOfNextEC = 0;
+  
   currentTriggerMessage = NULL;
 
   numReceived = 0;
@@ -79,8 +88,7 @@ Switch::Switch()
   numMessage = 0;
 }
 /*------------------------------------------------------------------------------*/
-Switch::~Switch()
-{
+Switch::~Switch(){
   if(currentTriggerMessage) delete currentTriggerMessage;
 
   cancelAndDelete(timerEvent);
@@ -89,8 +97,7 @@ Switch::~Switch()
 }
 
 /*------------------------------------------------------------------------------*/
-void Switch::initialize()
-{
+void Switch::initialize(){
   // parse values for each switch from omnetpp.ini file
   // we actually select the gate[0] to shortest path to controller for each switch
   defaultRoute = par("defaultRoute");
@@ -111,8 +118,7 @@ void Switch::initialize()
 }
 
 /*------------------------------------------------------------------------------*/
-void Switch::handleMessage(cMessage *msg)
-{
+void Switch::handleMessage(cMessage *msg){
   numMessage = messageList.getMessageCount();
   refreshDisplay();
 
@@ -142,146 +148,19 @@ void Switch::handleMessage(cMessage *msg)
 
     scheduleAt(simTime() + 0.1, trafficGenerator);
   } else if(msg == trafficGenerator){
-    int reSchedule = 0;
-    char data[20];
-    GeneralMessage* message;
-
-#if MESSAGE_ID_0_ENABLED
-    if(id == MESSAGE_ID_0_SRC){
-      static int seqNumMsg01;
-      for(int i = 0; i < MESSAGE_ID_0_PER_SEC; i++){
-        sprintf(data, "MSG_0 %d", seqNumMsg01++);
-        message = generateMesagge(GM_TYPE_DATA, MESSAGE_ID_0, MESSAGE_ID_0_DEST, MESSAGE_ID_0_PORT, data);
-        messageList.add(message);
-      }
-      reSchedule = 1;
-    }
-#endif /* MESSAGE_ID_0_ENABLED */
-#if MESSAGE_ID_1_ENABLED
-    if(id == MESSAGE_ID_1_SRC){
-      static int seqNumMsg1;
-      for(int i = 0; i < MESSAGE_ID_1_PER_SEC; i++){
-        sprintf(data, "MSG_1 %d", seqNumMsg1++);
-        message = generateMesagge(GM_TYPE_DATA, MESSAGE_ID_1, MESSAGE_ID_1_DEST, MESSAGE_ID_1_PORT, data);
-        messageList.add(message);
-      }
-      reSchedule = 1;
-    }
-#endif /* MESSAGE_ID_1_ENABLED */
-#if MESSAGE_ID_2_ENABLED
-    if(id == MESSAGE_ID_2_SRC){
-      static int seqNumMsg2;
-      for(int i = 0; i < MESSAGE_ID_2_PER_SEC; i++){
-        sprintf(data, "MSG_2 %d", seqNumMsg2++);
-        message = generateMesagge(GM_TYPE_DATA, MESSAGE_ID_2, MESSAGE_ID_2_DEST, MESSAGE_ID_2_PORT, data);
-        messageList.add(message);
-      }
-      reSchedule = 1;
-    }
-#endif /* MESSAGE_ID_2_ENABLED */
-#if MESSAGE_ID_3_ENABLED
-    if(id == MESSAGE_ID_3_SRC){
-      static int seqNumMsg02;
-      for(int i = 0; i < MESSAGE_ID_3_PER_SEC; i++){
-        sprintf(data, "MSG_0 %d", seqNumMsg02++);
-        message = generateMesagge(GM_TYPE_DATA, MESSAGE_ID_3, MESSAGE_ID_3_DEST, MESSAGE_ID_3_PORT, data);
-        messageList.add(message);
-      }
-      reSchedule = 1;
-    }
-#endif /* MESSAGE_ID_3_ENABLED */
-#if MESSAGE_ID_4_ENABLED
-    if(id == MESSAGE_ID_4_SRC){
-      static int seqNumMsg02;
-      for(int i = 0; i < MESSAGE_ID_4_PER_SEC; i++){
-        sprintf(data, "MSG_0 %d", seqNumMsg02++);
-        message = generateMesagge(GM_TYPE_DATA, MESSAGE_ID_4, MESSAGE_ID_4_DEST, MESSAGE_ID_4_PORT, data);
-        messageList.add(message);
-      }
-      reSchedule = 1;
-    }
-#endif /* MESSAGE_ID_4_ENABLED */
-#if MESSAGE_ID_5_ENABLED
-    if(id == MESSAGE_ID_5_SRC){
-      static int seqNumMsg02;
-      for(int i = 0; i < MESSAGE_ID_5_PER_SEC; i++){
-        sprintf(data, "MSG_1 %d", seqNumMsg02++);
-        message = generateMesagge(GM_TYPE_DATA, MESSAGE_ID_5, MESSAGE_ID_5_DEST, MESSAGE_ID_5_PORT, data);
-        messageList.add(message);
-      }
-      reSchedule = 1;
-    }
-#endif /* MESSAGE_ID_5_ENABLED */
-    if(reSchedule){
-      scheduleAt(simTime() + 1, trafficGenerator);
-    }
+    generateTraffic();
   } else if(msg == timerTrigger){
     GeneralMessage* message = messageList.get(currentTriggerMessage->getId(currentTriggerMessage->getOffset()));
     //EV << "MessageCount = " << messageList.getMessageCount() << "\n";
     forwardMessage(message);
     checkAndSchedule();
   } else{
-    GeneralMessage *gMsg = check_and_cast<GeneralMessage *>(msg);
-    if(gMsg == NULL){
-      EV << "handleMessage: Message cast failed!\n";
-      return;
-    }
-
-    // destination area is not valid for advertisement messages so check them first
-    int type = gMsg->getType();
-    if(type == GM_TYPE_ADVERTISE){
-      EV << "handleMessage: Adv message received from ";
-      printIndexInHR(getIndexFromId(gMsg->getSource()), 1);
-
-      int gate = msg->getArrivalGate()->getIndex();
-      gateToDest[gate] = gMsg->getSource();
-      sendAdvAck(gate);
-
-      delete msg;
-    } else if(type == GM_TYPE_ADVERTISE_ACK){
-      // set gate-destination relation
-      gateToDest[msg->getArrivalGate()->getIndex()] = gMsg->getSource();
-
-      delete msg;
-#if WITH_ADMISSION_CONTROL
-    } else if(type != GM_TYPE_ADMISSION && gMsg->getDestination() == id) { // forward ADMISSION messages even for us
-#else /* WITH_ADMISSION_CONTROL */
-    } else if(gMsg->getDestination() == id) { // check is message for us
-#endif /* WITH_ADMISSION_CONTROL */
-      if(type == GM_TYPE_DATA){
-        numReceived++;
-        EV << "handleMessage: Message " << msg << " received from ";
-        printIndexInHR(getIndexFromId(gMsg->getSource()), 1);
-      } else if(type == GM_TYPE_FLOW_RULE){
-        EV << "handleMessage: FlowRule received from ";
-        printIndexInHR(getIndexFromId(gMsg->getSource()), 1);
-
-        flowRules.addRule(gMsg->getFRuleSource(), gMsg->getFRuleDestination(), gMsg->getFRulePort(), gMsg->getFRuleNextDestination());
-      } else{
-        EV << "handleMessage: Unknown message type!\n";
-      }
-
-      delete msg; // free received msg
-    } else if(type == GM_TYPE_TM){
-      setCurrentTriggerMessage(gMsg);
-      checkAndSchedule();
-
-      delete msg;
-    } else {
-      if(currentTriggerMessage == NULL){
-        forwardMessage(gMsg);
-      } else{
-        // add messageList for forwarding
-        messageList.add(gMsg);
-        checkAndSchedule();
-      }
-    }
+    handleGeneralMessage(msg);
   }
 }
 
 /*------------------------------------------------------------------------------*/
-void Switch::forwardMessage(GeneralMessage *gMsg)
-{
+void Switch::forwardMessage(GeneralMessage *gMsg){
   int i, n = gateSize("gate");
   int gateNum = n;
   int dest = flowRules.getNextDestination(gMsg->getSource(), gMsg->getDestination(), gMsg->getPort());
@@ -334,8 +213,15 @@ void Switch::forwardMessage(GeneralMessage *gMsg)
 }
 
 /*------------------------------------------------------------------------------*/
-GeneralMessage* Switch::generateMesagge(int type, int messageId, int dest, int port, char *data)
+void Switch::refreshDisplay() const
 {
+    char buf[50];
+    sprintf(buf, "R:%ld S:%ld F:%ld L:%ld", numReceived, numSent, numForward, numMessage);
+    getDisplayString().setTagArg("t", 0, buf);
+}
+
+/*------------------------------------------------------------------------------*/
+GeneralMessage* Switch::generateMesagge(int type, int messageId, int dest, int port, char *data){
   GeneralMessage *gMsg = new GeneralMessage(data);
   if(gMsg == NULL){
     return NULL;
@@ -351,8 +237,7 @@ GeneralMessage* Switch::generateMesagge(int type, int messageId, int dest, int p
 }
 
 /*------------------------------------------------------------------------------*/
-void Switch::sendAdv(int gateNum)
-{
+void Switch::sendAdv(int gateNum){
   GeneralMessage *gMsg = generateMesagge(GM_TYPE_ADVERTISE, 0, 0, 0, (char *)"ADV");
   if(gMsg == NULL){
     EV << "sendAdv: Message generate failed!\n";
@@ -364,8 +249,7 @@ void Switch::sendAdv(int gateNum)
 }
 
 /*------------------------------------------------------------------------------*/
-void Switch::sendAdvAck(int gateNum)
-{
+void Switch::sendAdvAck(int gateNum){
   GeneralMessage *gMsg = generateMesagge(GM_TYPE_ADVERTISE_ACK, 0, 0, 0, (char *)"ADV-ACK");
   if(gMsg == NULL){
     EV << "sendAdvAck: Message generate failed!\n";
@@ -377,8 +261,7 @@ void Switch::sendAdvAck(int gateNum)
 }
 
 /*------------------------------------------------------------------------------*/
-void Switch::setGateInfoFields(GeneralMessage *gMsg, int *gateInfo, int gateNum)
-{
+void Switch::setGateInfoFields(GeneralMessage *gMsg, int *gateInfo, int gateNum){
   gMsg->setGateInfoArraySize(gateNum);
   for(int i = 0; i < gateNum; i++){
     gMsg->setGateInfo(i, gateInfo[i]);
@@ -426,9 +309,160 @@ void Switch::setCurrentTriggerMessage(GeneralMessage *gMsg){
 }
 
 /*------------------------------------------------------------------------------*/
-void Switch::refreshDisplay() const
-{
-    char buf[50];
-    sprintf(buf, "R:%ld S:%ld F:%ld L:%ld", numReceived, numSent, numForward, numMessage);
-    getDisplayString().setTagArg("t", 0, buf);
+void Switch::generateTraffic(){
+  int reSchedule = 0;
+  char data[20];
+  GeneralMessage* message;
+
+#if MESSAGE_ID_0_ENABLED
+  if(id == MESSAGE_ID_0_SRC){
+    static int seqNumMsg01;
+    for(int i = 0; i < MESSAGE_ID_0_PER_SEC; i++){
+      sprintf(data, "MSG_0 %d", seqNumMsg01++);
+      message = generateMesagge(GM_TYPE_DATA, MESSAGE_ID_0, MESSAGE_ID_0_DEST, MESSAGE_ID_0_PORT, data);
+      messageList.add(message);
+    }
+    reSchedule = 1;
+  }
+#endif /* MESSAGE_ID_0_ENABLED */
+#if MESSAGE_ID_1_ENABLED
+  if(id == MESSAGE_ID_1_SRC){
+    static int seqNumMsg1;
+    for(int i = 0; i < MESSAGE_ID_1_PER_SEC; i++){
+      sprintf(data, "MSG_1 %d", seqNumMsg1++);
+      message = generateMesagge(GM_TYPE_DATA, MESSAGE_ID_1, MESSAGE_ID_1_DEST, MESSAGE_ID_1_PORT, data);
+      messageList.add(message);
+    }
+    reSchedule = 1;
+  }
+#endif /* MESSAGE_ID_1_ENABLED */
+#if MESSAGE_ID_2_ENABLED
+  if(id == MESSAGE_ID_2_SRC){
+    static int seqNumMsg2;
+    for(int i = 0; i < MESSAGE_ID_2_PER_SEC; i++){
+      sprintf(data, "MSG_2 %d", seqNumMsg2++);
+      message = generateMesagge(GM_TYPE_DATA, MESSAGE_ID_2, MESSAGE_ID_2_DEST, MESSAGE_ID_2_PORT, data);
+      messageList.add(message);
+    }
+    reSchedule = 1;
+  }
+#endif /* MESSAGE_ID_2_ENABLED */
+#if MESSAGE_ID_3_ENABLED
+  if(id == MESSAGE_ID_3_SRC){
+    static int seqNumMsg02;
+    for(int i = 0; i < MESSAGE_ID_3_PER_SEC; i++){
+      sprintf(data, "MSG_0 %d", seqNumMsg02++);
+      message = generateMesagge(GM_TYPE_DATA, MESSAGE_ID_3, MESSAGE_ID_3_DEST, MESSAGE_ID_3_PORT, data);
+      messageList.add(message);
+    }
+    reSchedule = 1;
+  }
+#endif /* MESSAGE_ID_3_ENABLED */
+#if MESSAGE_ID_4_ENABLED
+  if(id == MESSAGE_ID_4_SRC){
+    static int seqNumMsg02;
+    for(int i = 0; i < MESSAGE_ID_4_PER_SEC; i++){
+      sprintf(data, "MSG_0 %d", seqNumMsg02++);
+      message = generateMesagge(GM_TYPE_DATA, MESSAGE_ID_4, MESSAGE_ID_4_DEST, MESSAGE_ID_4_PORT, data);
+      messageList.add(message);
+    }
+    reSchedule = 1;
+  }
+#endif /* MESSAGE_ID_4_ENABLED */
+#if MESSAGE_ID_5_ENABLED
+  if(id == MESSAGE_ID_5_SRC){
+    static int seqNumMsg02;
+    for(int i = 0; i < MESSAGE_ID_5_PER_SEC; i++){
+      sprintf(data, "MSG_1 %d", seqNumMsg02++);
+      message = generateMesagge(GM_TYPE_DATA, MESSAGE_ID_5, MESSAGE_ID_5_DEST, MESSAGE_ID_5_PORT, data);
+      messageList.add(message);
+    }
+    reSchedule = 1;
+  }
+#endif /* MESSAGE_ID_5_ENABLED */
+  if(reSchedule){
+    scheduleAt(simTime() + 1, trafficGenerator);
+  }
+}
+
+/*------------------------------------------------------------------------------*/
+void Switch::handleGeneralMessage(cMessage *msg){
+  GeneralMessage *gMsg = check_and_cast<GeneralMessage *>(msg);
+  if(gMsg == NULL){
+    EV << "handleMessage: Message cast failed!\n";
+    return;
+  }
+
+  int type = gMsg->getType();
+  
+  // destination area is not valid for advertisement messages so check them first
+  if(type == GM_TYPE_ADVERTISE){
+    EV << "handleGM: Adv message received from ";
+    printIndexInHR(getIndexFromId(gMsg->getSource()), 1);
+
+    int gate = msg->getArrivalGate()->getIndex();
+    gateToDest[gate] = gMsg->getSource();
+    sendAdvAck(gate);
+
+    delete msg;
+  } else if(type == GM_TYPE_ADVERTISE_ACK){
+    // set gate-destination relation
+    gateToDest[msg->getArrivalGate()->getIndex()] = gMsg->getSource();
+
+    delete msg;
+#if WITH_ADMISSION_CONTROL
+  } else if(type != GM_TYPE_ADMISSION && gMsg->getDestination() == id) { // forward ADMISSION messages even for us
+#else /* WITH_ADMISSION_CONTROL */
+  } else if(gMsg->getDestination() == id) { // check is message for us
+#endif /* WITH_ADMISSION_CONTROL */
+    if(type == GM_TYPE_DATA){
+      numReceived++;
+      EV << "handleGM: Message " << msg << " received from ";
+      printIndexInHR(getIndexFromId(gMsg->getSource()), 1);
+    } else if(type == GM_TYPE_FLOW_RULE){
+      EV << "handleGM: FlowRule received from ";
+      printIndexInHR(getIndexFromId(gMsg->getSource()), 1);
+
+      flowRules.addRule(gMsg->getFRuleSource(), gMsg->getFRuleDestination(), gMsg->getFRulePort(), gMsg->getFRuleNextDestination());
+    } else if(type == GM_TYPE_ASYNC){
+      if(simTime().dbl() + CHANNEL_DELAYS < beginningOfNextEC){
+        EV << "handleGM: Sending Async message\n";
+        GeneralMessage *message = getNextMessage();
+        if(message != NULL){
+          forwardMessage(message);
+        }
+      }
+    } else{
+      EV << "handleGM: Unknown message type " << type << "!\n";
+    }
+
+    delete msg; // free received msg
+  } else if(type == GM_TYPE_TM){
+    setCurrentTriggerMessage(gMsg);
+
+    // set next EC start point
+    beginningOfNextEC = simTime().dbl() + (EC_TOTAL_SLOT_NUM * EC_EACH_SLOT_LEN_IN_SEC);
+
+    checkAndSchedule();
+
+    delete msg;
+  } else {
+    if(currentTriggerMessage == NULL){ // TODO: make this much smarter
+      forwardMessage(gMsg);
+    } else{
+      // add messageList for forwarding
+      messageList.add(gMsg);
+      checkAndSchedule();
+    }
+  }
+}
+
+/*------------------------------------------------------------------------------*/
+GeneralMessage* Switch::getNextMessage(){
+  GeneralMessage *msg = messageListAsync.getNext();
+  if(msg == NULL){ // Async list empty try sync
+    msg = messageList.getNext();
+  }
+
+  return msg;
 }

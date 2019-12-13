@@ -16,6 +16,11 @@
 
 using namespace omnetpp;
 
+// used on async traffic
+static const int switchIds[] = SWITCH_IDS;
+static unsigned int switchOffset = 0;
+static int switchIdsSize = sizeof(switchIds) / sizeof(unsigned int);
+
 /*------------------------------------------------------------------------------*/
 class Controller : public cSimpleModule
 {
@@ -31,26 +36,36 @@ private:
   void forwardMessageToDest(GeneralMessage *gMsg, int destination);
   void forwardMessageAllGate(GeneralMessage *gMsg);
   void sendAdvAck(int gateNum);
-  GeneralMessage *generateMesagge(int type, int messageId, int dest, int port, char *data);
+  GeneralMessage* generateMesagge(int type, int messageId, int dest, int port, char *data);
   void setFRuleFields(GeneralMessage *gMsg, int src, int dest, int port, int nextDest);
   void setNextHopField(GeneralMessage *gMsg, int arraySize, int *array);
   void setTriggerMessageFields(GeneralMessage *gMsg, TriggerMessage *tm);
   void checkAndSchedule();
   void generateRulesAndSend(int src, int dest, int port);
+  void handleGeneralMessage(cMessage *msg);
+  GeneralMessage* getNextMessage();
 
-  cMessage *timerEvent;
-  cMessage *timerTrigger;
   int id;
+  int gateInfoCounter;
+  cMessage *timerEvent;
+  
+  // database
+  int gateToDest[EXPECTED_GATE_MAX_NUM];
   Relation* relations;
   FlowRules flowRules[TOTAL_SWITCH_NUM + 1]; // +1 for controller
-  int gateToDest[EXPECTED_GATE_MAX_NUM];
   MessageList messageList;
-  TriggerMessage* currentTriggerMessage;
-  int gateInfoCounter;
+  MessageList messageListAsync;
+
+  // FTT spesific
   ElementaryCycle* currentEC;
-  int debugCurrentEC;
+  TriggerMessage* currentTriggerMessage;
+  // used on async traffic
+  cMessage *timerTrigger;
+  cMessage *timerTriggerAsync;
+  double beginningOfNextEC;
 
   // debug variables
+  int debugCurrentEC;
   long numReceived;
   long numSent;
   long numForward;
@@ -60,8 +75,7 @@ private:
 Define_Module(Controller);
 
 /*------------------------------------------------------------------------------*/
-Controller::Controller()
-{
+Controller::Controller(){
   timerEvent = NULL;
   relations = NULL;
 
@@ -79,18 +93,17 @@ Controller::Controller()
 }
 
 /*------------------------------------------------------------------------------*/
-Controller::~Controller()
-{
+Controller::~Controller(){
   if(currentTriggerMessage != NULL) delete currentTriggerMessage;
 
   cancelAndDelete(timerEvent);
   cancelAndDelete(timerTrigger);
+  cancelAndDelete(timerTriggerAsync);
   if(relations != NULL) delete relations;
 }
 
 /*------------------------------------------------------------------------------*/
-void Controller::initialize()
-{
+void Controller::initialize(){
   id = par("id");
 
   relations = new Relation(TOTAL_SWITCH_NUM + 1); // +1 for controller
@@ -99,6 +112,7 @@ void Controller::initialize()
 
   // init pointer, schedule when tm received
   timerTrigger = new cMessage("trigger");
+  timerTriggerAsync = new cMessage("triggerAsync");
 
   /* 
    * MESSAGE_ID_0: 6 message per sec
@@ -128,8 +142,7 @@ void Controller::initialize()
 }
 
 /*------------------------------------------------------------------------------*/
-void Controller::handleMessage(cMessage *msg)
-{
+void Controller::handleMessage(cMessage *msg){
   numMessage = messageList.getMessageCount();
   refreshDisplay();
 
@@ -147,8 +160,16 @@ void Controller::handleMessage(cMessage *msg)
     // send it all gate
     forwardMessageAllGate(gMsg);
 
+    // schedule endof sync period to start async
+    if(timerTriggerAsync->isScheduled()){
+      cancelEvent(timerTriggerAsync);
+    }
+    scheduleAt(simTime() + CONTROLLER_CHANNEL_DELAY + ((currentEC->triggerMessage.getUsedNum() + 1) * EC_EACH_SLOT_LEN_IN_SEC), timerTriggerAsync);
+    EV << "ASYNC scheduled: " << (simTime() + CONTROLLER_CHANNEL_DELAY + ((currentEC->triggerMessage.getUsedNum() + 1) * EC_EACH_SLOT_LEN_IN_SEC));
+
     // schedule next EC start point to wake up
-    scheduleAt(simTime() + (EC_TOTAL_SLOT_NUM * EC_EACH_SLOT_LEN_IN_SEC), timerEvent);
+    beginningOfNextEC = simTime().dbl() + CONTROLLER_CHANNEL_DELAY + (EC_TOTAL_SLOT_NUM * EC_EACH_SLOT_LEN_IN_SEC);
+    scheduleAt(beginningOfNextEC, timerEvent);
     checkAndSchedule();
     return; // this is self message so do not continue the function
   } else if(msg == timerTrigger){
@@ -162,94 +183,47 @@ void Controller::handleMessage(cMessage *msg)
     }
     checkAndSchedule();
     return; // this is self message so do not continue the function
-  }
+  } else if(msg == timerTriggerAsync){
+    // if we have enough time before next EC
+    if(simTime().dbl() + CHANNEL_DELAYS < beginningOfNextEC){
+      GeneralMessage *message = NULL;
+      if(switchIds[switchOffset] == CONTROLLER_ID){
+        message = getNextMessage();
+        switchOffset = ((switchOffset + 1) % switchIdsSize);
+      }
 
-  GeneralMessage *gMsg = check_and_cast<GeneralMessage *>(msg);
-  if(gMsg == NULL){
-    EV << "handleMessage: Message cast failed!\n";
+      if(message == NULL){ // controller doesn't have message or switch id different from CONTROLLER_ID
+        EV << "timerTriggerAsync: authorize ";
+        printIndexInHR(getIndexFromId(switchIds[switchOffset]), 1);
+        message = generateMesagge(GM_TYPE_ASYNC, 0, switchIds[switchOffset], 0, (char *)"ASYNC");
+        switchOffset = ((switchOffset + 1) % switchIdsSize);
+      } else{
+        EV << "timerTriggerAsync: authorize the Controller\n";
+      }
+
+      // schedule next async slot
+      scheduleAt(simTime() + EC_EACH_SLOT_LEN_IN_SEC, timerTriggerAsync);
+      // then forward the message
+      if(message != NULL){
+        forwardMessage(message);
+      }
+    }
+
     return;
   }
 
-  int type = gMsg->getType();
-
-  if(gMsg->getSource() != CONTROLLER_ID){
-    EV << "handleMessage: Message [" << type << "] received from Switch_" << (getIndexFromId(gMsg->getSource()) - 1) << "\n";
-  }
-
-  if(type == GM_TYPE_ADVERTISE){
-    int gate = msg->getArrivalGate()->getIndex();
-    gateToDest[gate] = gMsg->getSource();
-    sendAdvAck(gate);
-
-    delete msg;
-#if WITH_ADMISSION_CONTROL
-  } else if(type == GM_TYPE_DATA || type == GM_TYPE_ADMISSION){
-#else /* WITH_ADMISSION_CONTROL */
-  } else if(type == GM_TYPE_DATA){
-#endif /* WITH_ADMISSION_CONTROL */
-    if(gMsg->getDestination() != CONTROLLER_ID){
-      messageList.add(gMsg);
-      checkAndSchedule();
-    } else{
-      numReceived++;
-      EV << "handleMessage: DATA[" << gMsg->getMessageId() << "] received from Switch_" << (getIndexFromId(gMsg->getSource()) - 1) << "\n";
-      delete msg;
-    }
-
-#if 0 // TODO: this area will be usefull in asynchronous traffic
-    int dest = flowRules[CONTROLLER_INDEX].getNextDestination(gMsg->getSource(), gMsg->getDestination(), gMsg->getPort());
-    if(dest != DESTINATION_NOT_FOUND){
-      forwardMessageToDest(gMsg, dest);
-    } else{ // we have no rule, genarete rules
-      
-    }
-#endif
-  } else if(type == GM_TYPE_FLOW_RULE){
-    forwardMessage(gMsg);
-  } else if(type == GM_TYPE_GATE_INFO){
-    EV << "  GateInfo: Switch_" << (getIndexFromId(gMsg->getSource()) - 1) << ": ";
-    unsigned int i, arrSize = gMsg->getGateInfoArraySize();
-    for(i = 0; i < arrSize; i++){
-      relations->addEdge(getIndexFromId(gMsg->getSource()), getIndexFromId(gMsg->getGateInfo(i)));
-      if(i < arrSize - 1){
-        EV << gMsg->getGateInfo(i) << ", ";
-      }
-    }
-    EV << gMsg->getGateInfo(arrSize - 1) << "\n";
-
-    gateInfoCounter++; // increment the received GATE_INFO message counter
-    if(gateInfoCounter == TOTAL_SWITCH_NUM){ // All GATE_INFO message received from switches
-#if MESSAGE_ID_0_ENABLED
-      generateRulesAndSend(MESSAGE_ID_0_SRC, MESSAGE_ID_0_DEST, MESSAGE_ID_0_PORT);
-#endif /* MESSAGE_ID_0_ENABLED */
-#if MESSAGE_ID_1_ENABLED
-      generateRulesAndSend(MESSAGE_ID_1_SRC, MESSAGE_ID_1_DEST, MESSAGE_ID_1_PORT);
-#endif /* MESSAGE_ID_1_ENABLED */
-#if MESSAGE_ID_2_ENABLED
-      generateRulesAndSend(MESSAGE_ID_2_SRC, MESSAGE_ID_2_DEST, MESSAGE_ID_2_PORT);
-#endif /* MESSAGE_ID_2_ENABLED */
-#if MESSAGE_ID_3_ENABLED
-      generateRulesAndSend(MESSAGE_ID_3_SRC, MESSAGE_ID_3_DEST, MESSAGE_ID_3_PORT);
-#endif /* MESSAGE_ID_3_ENABLED */
-#if MESSAGE_ID_4_ENABLED
-      generateRulesAndSend(MESSAGE_ID_4_SRC, MESSAGE_ID_4_DEST, MESSAGE_ID_4_PORT);
-#endif /* MESSAGE_ID_4_ENABLED */
-#if MESSAGE_ID_5_ENABLED
-      generateRulesAndSend(MESSAGE_ID_5_SRC, MESSAGE_ID_5_DEST, MESSAGE_ID_5_PORT);
-#endif /* MESSAGE_ID_5_ENABLED */
-
-      // set timer to start EC frames
-      timerEvent = new cMessage("event");
-      scheduleAt(simTime() + 0.01, timerEvent);
-    }
-
-    delete msg;
-  }
+  handleGeneralMessage(msg);
 }
 
 /*------------------------------------------------------------------------------*/
-void Controller::forwardMessage(GeneralMessage *gMsg)
-{
+void Controller::refreshDisplay() const{
+    char buf[50];
+    sprintf(buf, "R:%ld S:%ld F:%ld L:%ld", numReceived, numSent, numForward, numMessage);
+    getDisplayString().setTagArg("t", 0, buf);
+}
+
+/*------------------------------------------------------------------------------*/
+void Controller::forwardMessage(GeneralMessage *gMsg){
   int i, n = gateSize("gate");
   int gateNum = n;
   int dest = gMsg->getDestination();
@@ -289,8 +263,7 @@ void Controller::forwardMessage(GeneralMessage *gMsg)
 }
 
 /*------------------------------------------------------------------------------*/
-void Controller::forwardMessageToDest(GeneralMessage *gMsg, int destination)
-{
+void Controller::forwardMessageToDest(GeneralMessage *gMsg, int destination){
   int i, n = gateSize("gate");
   int gateNum = n;
 
@@ -319,8 +292,7 @@ void Controller::forwardMessageToDest(GeneralMessage *gMsg, int destination)
 }
 
 /*------------------------------------------------------------------------------*/
-void Controller::forwardMessageAllGate(GeneralMessage *gMsg)
-{
+void Controller::forwardMessageAllGate(GeneralMessage *gMsg){
   int i, n = gateSize("gate");
 
   EV << "forwardMessageAllGate: Forwarding message!\n";
@@ -333,8 +305,7 @@ void Controller::forwardMessageAllGate(GeneralMessage *gMsg)
 }
 
 /*------------------------------------------------------------------------------*/
-void Controller::sendAdvAck(int gateNum)
-{
+void Controller::sendAdvAck(int gateNum){
   GeneralMessage *gMsg = generateMesagge(GM_TYPE_ADVERTISE_ACK, 0, 0, 0, (char *)"ADV-ACK");
   if(gMsg == NULL){
     EV << "sendAdvAck: Message generate failed!\n";
@@ -346,8 +317,7 @@ void Controller::sendAdvAck(int gateNum)
 }
 
 /*------------------------------------------------------------------------------*/
-GeneralMessage* Controller::generateMesagge(int type, int messageId, int dest, int port, char *data)
-{
+GeneralMessage* Controller::generateMesagge(int type, int messageId, int dest, int port, char *data){
   GeneralMessage *gMsg = new GeneralMessage(data);
   if(gMsg == NULL){
     return NULL;
@@ -363,8 +333,7 @@ GeneralMessage* Controller::generateMesagge(int type, int messageId, int dest, i
 }
 
 /*------------------------------------------------------------------------------*/
-void Controller::setFRuleFields(GeneralMessage *gMsg, int src, int dest, int port, int nextDest)
-{
+void Controller::setFRuleFields(GeneralMessage *gMsg, int src, int dest, int port, int nextDest){
   gMsg->setFRuleSource(src);
   gMsg->setFRuleDestination(dest);
   gMsg->setFRulePort(port);
@@ -372,8 +341,7 @@ void Controller::setFRuleFields(GeneralMessage *gMsg, int src, int dest, int por
 }
 
 /*------------------------------------------------------------------------------*/
-void Controller::setNextHopField(GeneralMessage *gMsg, int arraySize, int *array)
-{
+void Controller::setNextHopField(GeneralMessage *gMsg, int arraySize, int *array){
   gMsg->setNextHopArraySize(arraySize);
   for(int i = 0; i < arraySize; i++){
     gMsg->setNextHop(i, array[i]);
@@ -381,8 +349,7 @@ void Controller::setNextHopField(GeneralMessage *gMsg, int arraySize, int *array
 }
 
 /*------------------------------------------------------------------------------*/
-void Controller::setTriggerMessageFields(GeneralMessage *gMsg, TriggerMessage *tm)
-{
+void Controller::setTriggerMessageFields(GeneralMessage *gMsg, TriggerMessage *tm){
   int usedNum = tm->getUsedNum();
   int ids[usedNum];
   double times[usedNum];
@@ -391,7 +358,7 @@ void Controller::setTriggerMessageFields(GeneralMessage *gMsg, TriggerMessage *t
 
   for(int i = 0; i < usedNum; i++){
     ids[i] = tm->getId(i);
-    times[i] = simTime().dbl() + CHANNEL_DELAYS + tm->getTime(i); // add alfa (CHANNEL_DELAYS)
+    times[i] = simTime().dbl() + CONTROLLER_CHANNEL_DELAY + tm->getTime(i); // add alfa (CONTROLLER_CHANNEL_DELAY)
 
     currentTriggerMessage->add(ids[i], times[i]);
   }
@@ -413,8 +380,14 @@ void Controller::checkAndSchedule(){
 
   int i;
   for(i = 0; i < currentTriggerMessage->getUsedNum(); i++){
-    if(simTime().dbl() + CHANNEL_DELAYS < currentTriggerMessage->getTime(i)){
-      break; // not passed first slot found
+    /* checking simTime() < current... causes repeat checkAndSchedule insanely 
+     * when CONTROLLER_CHANNEL_DELAY = 0 add some time */
+    double delay = CONTROLLER_CHANNEL_DELAY;
+    if(delay == 0){
+      delay = (EC_EACH_SLOT_LEN_IN_SEC / 2);
+    }
+    if(simTime().dbl() + delay < currentTriggerMessage->getTime(i)){
+      break; // not passed first slot found 
     }
   }
 
@@ -428,6 +401,7 @@ void Controller::checkAndSchedule(){
   }
 }
 
+/*------------------------------------------------------------------------------*/
 void Controller::generateRulesAndSend(int src, int dest, int port){
   vector<int> path = relations->getShortestDistance(getIndexFromId(src), getIndexFromId(dest));
 
@@ -477,9 +451,87 @@ void Controller::generateRulesAndSend(int src, int dest, int port){
 }
 
 /*------------------------------------------------------------------------------*/
-void Controller::refreshDisplay() const
-{
-    char buf[50];
-    sprintf(buf, "R:%ld S:%ld F:%ld L:%ld", numReceived, numSent, numForward, numMessage);
-    getDisplayString().setTagArg("t", 0, buf);
+void Controller::handleGeneralMessage(cMessage *msg){
+  GeneralMessage *gMsg = check_and_cast<GeneralMessage *>(msg);
+  if(gMsg == NULL){
+    EV << "handleGM: Message cast failed!\n";
+    return;
+  }
+
+  int type = gMsg->getType();
+
+  if(gMsg->getSource() != CONTROLLER_ID){
+    EV << "handleGM: Message [" << type << "] received from Switch_" << (getIndexFromId(gMsg->getSource()) - 1) << "\n";
+  }
+
+  if(type == GM_TYPE_ADVERTISE){
+    int gate = msg->getArrivalGate()->getIndex();
+    gateToDest[gate] = gMsg->getSource();
+    sendAdvAck(gate);
+
+    delete msg;
+#if WITH_ADMISSION_CONTROL
+  } else if(type == GM_TYPE_DATA || type == GM_TYPE_ADMISSION){
+#else /* WITH_ADMISSION_CONTROL */
+  } else if(type == GM_TYPE_DATA){
+#endif /* WITH_ADMISSION_CONTROL */
+    if(gMsg->getDestination() != CONTROLLER_ID){
+      messageList.add(gMsg);
+      checkAndSchedule();
+    } else{
+      numReceived++;
+      EV << "handleGM: DATA[" << gMsg->getMessageId() << "] received from Switch_" << (getIndexFromId(gMsg->getSource()) - 1) << "\n";
+      delete msg;
+    }
+  } else if(type == GM_TYPE_FLOW_RULE){
+    forwardMessage(gMsg);
+  } else if(type == GM_TYPE_GATE_INFO){
+    EV << "  GateInfo: Switch_" << (getIndexFromId(gMsg->getSource()) - 1) << ": ";
+    unsigned int i, arrSize = gMsg->getGateInfoArraySize();
+    for(i = 0; i < arrSize; i++){
+      relations->addEdge(getIndexFromId(gMsg->getSource()), getIndexFromId(gMsg->getGateInfo(i)));
+      if(i < arrSize - 1){
+        EV << gMsg->getGateInfo(i) << ", ";
+      }
+    }
+    EV << gMsg->getGateInfo(arrSize - 1) << "\n";
+
+    gateInfoCounter++; // increment the received GATE_INFO message counter
+    if(gateInfoCounter == TOTAL_SWITCH_NUM){ // All GATE_INFO message received from switches
+#if MESSAGE_ID_0_ENABLED
+      generateRulesAndSend(MESSAGE_ID_0_SRC, MESSAGE_ID_0_DEST, MESSAGE_ID_0_PORT);
+#endif /* MESSAGE_ID_0_ENABLED */
+#if MESSAGE_ID_1_ENABLED
+      generateRulesAndSend(MESSAGE_ID_1_SRC, MESSAGE_ID_1_DEST, MESSAGE_ID_1_PORT);
+#endif /* MESSAGE_ID_1_ENABLED */
+#if MESSAGE_ID_2_ENABLED
+      generateRulesAndSend(MESSAGE_ID_2_SRC, MESSAGE_ID_2_DEST, MESSAGE_ID_2_PORT);
+#endif /* MESSAGE_ID_2_ENABLED */
+#if MESSAGE_ID_3_ENABLED
+      generateRulesAndSend(MESSAGE_ID_3_SRC, MESSAGE_ID_3_DEST, MESSAGE_ID_3_PORT);
+#endif /* MESSAGE_ID_3_ENABLED */
+#if MESSAGE_ID_4_ENABLED
+      generateRulesAndSend(MESSAGE_ID_4_SRC, MESSAGE_ID_4_DEST, MESSAGE_ID_4_PORT);
+#endif /* MESSAGE_ID_4_ENABLED */
+#if MESSAGE_ID_5_ENABLED
+      generateRulesAndSend(MESSAGE_ID_5_SRC, MESSAGE_ID_5_DEST, MESSAGE_ID_5_PORT);
+#endif /* MESSAGE_ID_5_ENABLED */
+
+      // set timer to start EC frames
+      timerEvent = new cMessage("event");
+      scheduleAt(simTime() + 0.01, timerEvent);
+    }
+
+    delete msg;
+  }
+}
+
+/*------------------------------------------------------------------------------*/
+GeneralMessage* Controller::getNextMessage(){
+  GeneralMessage *msg = messageListAsync.getNext();
+  if(msg == NULL){ // Async list empty try sync
+    msg = messageList.getNext();
+  }
+
+  return msg;
 }

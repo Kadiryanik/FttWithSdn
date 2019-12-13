@@ -31,7 +31,7 @@ int FlowRules::getNextDestination(int src, int dst, int p) {
 }
 
 /*------------------------------------------------------------------------------*/
-int FlowRules::addRule(int src, int dst, int p, int next) {
+void FlowRules::addRule(int src, int dst, int p, int next) {
   if(this->ruleOffset < MAX_RULE_NUM){
     this->rules[this->ruleOffset].setRule(src, dst, p, next);
     this->ruleOffset++;

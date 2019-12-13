@@ -19,7 +19,7 @@ public:
   int getOffset();
   int getId(int index);
   double getTime(int index);
-  int setOffset(int offset);
+  void setOffset(int offset);
   void clear();
 private:
   int usedNum;

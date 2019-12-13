@@ -75,16 +75,22 @@ int MessageList::check(int messageId){
 /*------------------------------------------------------------------------------*/
 GeneralMessage* MessageList::get(int messageId){
   GeneralMessage* msg = NULL;
-
   MessageListNode* ptr = this->head;
-  while(ptr->next != NULL){
+  
+  if(ptr == NULL){
+    return NULL; // list empty
+  }
+  
+  // check and set if head msg is match by using do while
+  do{
     if(ptr->msg->getMessageId() == messageId){
       msg = ptr->msg;
       break;
     }
 
     ptr = ptr->next;
-  }
+  } while(ptr->next != NULL);
+
   if(msg != NULL){
     if(ptr == this->head && this->messageCount == 1){
       this->head = NULL;
@@ -104,6 +110,30 @@ GeneralMessage* MessageList::get(int messageId){
 
     this->messageCount--;
   }
+  // return msg
+  return msg;
+}
+
+/*------------------------------------------------------------------------------*/
+GeneralMessage* MessageList::getNext(){
+  MessageListNode* ptr = this->head;
+  
+  if(ptr == NULL){
+    return NULL; // list empty
+  }
+  GeneralMessage* msg = this->head->msg;
+
+  if(this->messageCount == 1){
+    this->head = NULL;
+  } else{
+    // remove head
+    this->head = ptr->next;
+    ptr->next->prev = NULL;
+  }
+  this->messageCount--;
+
+  // clean up
+  delete ptr;
   // return msg
   return msg;
 }

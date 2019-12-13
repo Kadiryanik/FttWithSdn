@@ -35,6 +35,7 @@ public:
   void add(GeneralMessage *gMsg);
   int check(int messageId);
   GeneralMessage* get(int messageId);
+  GeneralMessage* getNext();
 };
 
 #endif /* HELPER_MESSAGELIST_H_ */
