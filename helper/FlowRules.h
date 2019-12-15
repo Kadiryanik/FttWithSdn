@@ -20,7 +20,7 @@ public:
   FlowRules();
   virtual ~FlowRules();
   int getNextDestination(int, int, int);
-  int addRule(int, int, int, int);
+  void addRule(int, int, int, int);
 };
 
 #endif /* HELPER_FLOWRULES_H_ */

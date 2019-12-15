@@ -40,11 +40,11 @@ network TestNetwork
     types:
         channel Channel extends ned.DelayChannel
         {
-            delay = 10ms;
+            delay = 20ms;
         }
     submodules:
         controller: Controller {
-            @display("p=175,20");
+            @display("p=175,30");
         }
         // TODO: use array, how to set position of each switch when using array?
         switch_0: Switch {
@@ -68,10 +68,13 @@ network TestNetwork
         // switch 1
         switch_1.gate++ <--> Channel <--> controller.gate++;
         // switch 2
+        switch_2.gate++ <--> Channel <--> controller.gate++;
         switch_2.gate++ <--> Channel <--> switch_0.gate++;
         // switch 3
+        switch_3.gate++ <--> Channel <--> controller.gate++;
         switch_3.gate++ <--> Channel <--> switch_1.gate++;
         switch_3.gate++ <--> Channel <--> switch_2.gate++;
         // switch 4
+        switch_4.gate++ <--> Channel <--> controller.gate++;
         switch_4.gate++ <--> Channel <--> switch_2.gate++;
 }

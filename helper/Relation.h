@@ -12,13 +12,14 @@
 #include <bits/stdc++.h>
 #include "conf.h"
 
-using namespace std; 
+using namespace std;
 
 class Relation {
 public:
   Relation(int);
   virtual ~Relation();
   void addEdge(int src, int dest);
+  void printShortestPath(int srcIndex, int destIndex);
   vector<int> getShortestDistance(int src, int dest);
 private:
   bool BFS(int src, int dest, int pred[], int dist[]);
@@ -30,5 +31,6 @@ private:
 /*------------------------------------------------------------------------------*/
 int getIndexFromId(int id);
 int getIdFromIndex(int index);
+void printIndexInHR(int index, int withEndLine);
 
 #endif /* HELPER_RELATION_H_ */

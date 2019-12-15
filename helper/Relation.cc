@@ -6,7 +6,13 @@
  *  Algorithm reference: https://www.geeksforgeeks.org/shortest-path-unweighted-graph
  */
 
+#include <stdio.h>
+#include <string.h>
+#include <omnetpp.h>
+
 #include "Relation.h"
+
+using namespace omnetpp;
 
 /*------------------------------------------------------------------------------*/
 Relation::Relation(int v){
@@ -25,6 +31,22 @@ Relation::~Relation(){
 void Relation::addEdge(int src, int dest){
   this->adj[src].push_back(dest);
   this->adj[dest].push_back(src);
+}
+
+/*------------------------------------------------------------------------------*/
+void Relation::printShortestPath(int srcIndex, int destIndex){
+  vector<int> path = this->getShortestDistance(srcIndex, destIndex);
+
+  EV << "Relation: shortest path for ";
+  printIndexInHR(srcIndex, 0);
+  EV << " -> ";
+  printIndexInHR(destIndex, 0);
+  EV << ":";
+  for(int i = path.size() - 1; i >= 0; i--){
+    EV << " ";
+    printIndexInHR(path[i], 0);
+  }
+  EV << "\n";
 }
 
 /*------------------------------------------------------------------------------*/
@@ -113,4 +135,19 @@ int getIdFromIndex(int index)
   }
 
   return (index + SWITCH_INDEX_OFFSET);
+}
+
+/*------------------------------------------------------------------------------*/
+void printIndexInHR(int index, int withEndLine)
+{
+  if(index == CONTROLLER_INDEX){
+    EV << "Controller";
+  } else{
+    EV << "Switch_";
+    EV << (index - 1);
+  }
+
+  if(withEndLine){
+    EV << "\n";
+  }
 }
