@@ -147,8 +147,6 @@ void Controller::handleMessage(cMessage *msg){
   refreshDisplay();
 
   if(msg == timerEvent){
-    // TODO: cancel if exist any timer except this
-
     // set currentEC
     currentEC = currentEC->next;
     debugCurrentEC = currentEC->elementaryCycleId;

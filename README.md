@@ -11,7 +11,3 @@ This project trys to simulate FTT with SDN
 - You can run the simulation
 
 	![](example.gif)
-
-### Todos
- - Test and improve SDN
- - Implement FTT

@@ -44,7 +44,7 @@ network TestNetwork
         }
     submodules:
         controller: Controller {
-            @display("p=175,20");
+            @display("p=175,30");
         }
         // TODO: use array, how to set position of each switch when using array?
         switch_0: Switch {
