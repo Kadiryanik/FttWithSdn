@@ -30,6 +30,7 @@ protected:
   virtual void handleMessage(cMessage *msg) override;
   virtual void forwardMessage(GeneralMessage *gMsg);
   virtual void refreshDisplay() const override;
+  virtual void finish() override;
 private:
   GeneralMessage* generateMesagge(int type, int messageId, int dest, int port, char *data);
   void sendAdv(int gateNum);
@@ -64,6 +65,10 @@ private:
   long numSent;
   long numForward;
   long numMessage;
+
+  // visualize results
+  cOutVector delayVector;
+  cHistogram delayStats;
 };
 
 Define_Module(Switch);
@@ -105,6 +110,8 @@ void Switch::initialize(){
   // get id, too
   id = par("id");
 
+  delayVector.setName("delayVector");
+  delayStats.setName("delayStats");
 
   // init pointer, schedule when neccessary
   trafficGenerator = new cMessage("trafficGenerator");
@@ -210,6 +217,8 @@ void Switch::forwardMessage(GeneralMessage *gMsg){
   EV << "forwardMessage: Forwarding message [" << gMsg->getMessageId() << "] on gate[" << gateNum << "]\n";
   // $o and $i suffix is used to identify the input/output part of a two way gate
   send(gMsg, "gate$o", gateNum);
+
+  refreshDisplay();
 }
 
 /*------------------------------------------------------------------------------*/
@@ -219,6 +228,22 @@ void Switch::refreshDisplay() const
     sprintf(buf, "R:%ld S:%ld F:%ld L:%ld", numReceived, numSent, numForward, numMessage);
     getDisplayString().setTagArg("t", 0, buf);
 }
+
+void Switch::finish(){
+    // This function is called by OMNeT++ at the end of the simulation.
+    EV << "Sent:     " << numSent << endl;
+    EV << "Received: " << numReceived << endl;
+    EV << "delay, min:    " << delayStats.getMin() << endl;
+    EV << "delay, max:    " << delayStats.getMax() << endl;
+    EV << "delay, mean:   " << delayStats.getMean() << endl;
+    EV << "delay, stddev: " << delayStats.getStddev() << endl;
+
+    recordScalar("#sent", numSent);
+    recordScalar("#received", numReceived);
+
+    delayStats.recordAs("delay");
+}
+
 
 /*------------------------------------------------------------------------------*/
 GeneralMessage* Switch::generateMesagge(int type, int messageId, int dest, int port, char *data){
@@ -419,6 +444,10 @@ void Switch::handleGeneralMessage(cMessage *msg){
       numReceived++;
       EV << "handleGM: Message " << msg << " received from ";
       printIndexInHR(getIndexFromId(gMsg->getSource()), 1);
+
+      EV << "handleGM: ARR " << msg->getArrivalTime() << "-" << msg->getCreationTime() << "\n";
+      delayVector.record(msg->getArrivalTime() - msg->getCreationTime());
+      delayStats.collect(msg->getArrivalTime() - msg->getCreationTime());
     } else if(type == GM_TYPE_FLOW_RULE){
       EV << "handleGM: FlowRule received from ";
       printIndexInHR(getIndexFromId(gMsg->getSource()), 1);

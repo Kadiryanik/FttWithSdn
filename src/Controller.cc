@@ -114,11 +114,7 @@ void Controller::initialize(){
   timerTrigger = new cMessage("trigger");
   timerTriggerAsync = new cMessage("triggerAsync");
 
-  /* 
-   * MESSAGE_ID_0: 6 message per sec
-   * MESSAGE_ID_1: 3 message per sec
-   * MESSAGE_ID_2: 1 message per sec
-   */
+#if SCHEDULE == SCHEDULE_1
   ElementaryCycle* EC1 = new ElementaryCycle();
   EC1->triggerMessage.add(MESSAGE_ID_0, EC_EACH_SLOT_LEN_IN_SEC);
   EC1->triggerMessage.add(MESSAGE_ID_1, EC_EACH_SLOT_LEN_IN_SEC * 2);
@@ -136,7 +132,18 @@ void Controller::initialize(){
   ElementaryCycle* EC4 = new ElementaryCycle();
   EC4->triggerMessage.add(MESSAGE_ID_0, EC_EACH_SLOT_LEN_IN_SEC);
   EC4->triggerMessage.add(MESSAGE_ID_1, EC_EACH_SLOT_LEN_IN_SEC * 2);
-
+#elif SCHEDULE == SCHEDULE_2
+  ElementaryCycle* EC1 = new ElementaryCycle();
+  EC1->triggerMessage.add(MESSAGE_ID_0, EC_EACH_SLOT_LEN_IN_SEC);
+  EC1->triggerMessage.add(MESSAGE_ID_0, EC_EACH_SLOT_LEN_IN_SEC * 2);
+  EC1->triggerMessage.add(MESSAGE_ID_0, EC_EACH_SLOT_LEN_IN_SEC * 3);
+  EC1->triggerMessage.add(MESSAGE_ID_0, EC_EACH_SLOT_LEN_IN_SEC * 4);
+  EC1->triggerMessage.add(MESSAGE_ID_0, EC_EACH_SLOT_LEN_IN_SEC * 5);
+  EC1->triggerMessage.add(MESSAGE_ID_0, EC_EACH_SLOT_LEN_IN_SEC * 6);
+  EC1->triggerMessage.add(MESSAGE_ID_0, EC_EACH_SLOT_LEN_IN_SEC * 7);
+  EC1->triggerMessage.add(MESSAGE_ID_0, EC_EACH_SLOT_LEN_IN_SEC * 8);
+  EC1->triggerMessage.add(MESSAGE_ID_0, EC_EACH_SLOT_LEN_IN_SEC * 9);
+#endif /* SCHEDULE */
   // we start with next pointer of this so use tail instead of head
   this->currentEC = ElementaryCycle::tail;
 }
@@ -287,6 +294,7 @@ void Controller::forwardMessageToDest(GeneralMessage *gMsg, int destination){
   EV << "forwardMessageToDest: Forwarding message on gate[" << gateNum << "] to Switch_" << (getIndexFromId(destination) - 1) << "\n";
   // $o and $i suffix is used to identify the input/output part of a two way gate
   send(gMsg, "gate$o", gateNum);
+  refreshDisplay();
 }
 
 /*------------------------------------------------------------------------------*/
@@ -401,8 +409,19 @@ void Controller::checkAndSchedule(){
 
 /*------------------------------------------------------------------------------*/
 void Controller::generateRulesAndSend(int src, int dest, int port){
+#if PASS_SHORTEST_PATH_FOR_TESTING
+  vector<int> path;  
+  path.push_back(SWITCH_9_INDEX);
+  path.push_back(SWITCH_7_INDEX);
+  path.push_back(SWITCH_5_INDEX);
+  path.push_back(SWITCH_3_INDEX);
+  path.push_back(SWITCH_2_INDEX);
+  path.push_back(SWITCH_4_INDEX);
+  path.push_back(SWITCH_6_INDEX);
+  path.push_back(SWITCH_8_INDEX);
+#else /* PASS_SHORTEST_PATH_FOR_TESTING */
   vector<int> path = relations->getShortestDistance(getIndexFromId(src), getIndexFromId(dest));
-
+#endif /* PASS_SHORTEST_PATH_FOR_TESTING */
   EV << "generateRulesAndSend: shortest path: ";
   printIndexInHR(getIndexFromId(src), 0);
   EV << " -> ";
@@ -413,8 +432,6 @@ void Controller::generateRulesAndSend(int src, int dest, int port){
     printIndexInHR(path[i], 0);
   }
   EV << "\n";
-
-
 
   for(int i = path.size() - 1; i > 0; i--){ // do not checking path[0] because of that the last path is the destination, do not send it any rule
       if(path[i] == CONTROLLER_INDEX){

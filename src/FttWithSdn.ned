@@ -36,7 +36,7 @@ simple Switch
 
 network TestNetwork
 {
-    @display("bgb=387,261");
+    @display("bgb=443,384");
     types:
         channel Channel extends ned.DelayChannel
         {
@@ -44,23 +44,38 @@ network TestNetwork
         }
     submodules:
         controller: Controller {
-            @display("p=175,30");
+            @display("p=220,38");
         }
         // TODO: use array, how to set position of each switch when using array?
         switch_0: Switch {
             @display("p=75,60");
         }
         switch_1: Switch {
-            @display("p=270,60");
+            @display("p=365,60");
         }
         switch_2: Switch {
             @display("p=75,135");
         }
         switch_3: Switch {
-            @display("p=270,135");
+            @display("p=365,135");
         }
         switch_4: Switch {
             @display("p=75,205");
+        }
+        switch_5: Switch {
+            @display("p=365,205");
+        }
+        switch_6: Switch {
+            @display("p=75,275");
+        }
+        switch_7: Switch {
+            @display("p=365,275");
+        }
+        switch_8: Switch {
+            @display("p=75,345");
+        }
+        switch_9: Switch {
+            @display("p=365,345");
         }
     connections:
         // switch 0
@@ -77,4 +92,19 @@ network TestNetwork
         // switch 4
         switch_4.gate++ <--> Channel <--> controller.gate++;
         switch_4.gate++ <--> Channel <--> switch_2.gate++;
+        // switch 5
+        switch_5.gate++ <--> Channel <--> controller.gate++;
+        switch_5.gate++ <--> Channel <--> switch_3.gate++;
+        // switch 6
+        switch_6.gate++ <--> Channel <--> controller.gate++;
+        switch_6.gate++ <--> Channel <--> switch_4.gate++;
+        // switch 7
+        switch_7.gate++ <--> Channel <--> controller.gate++;
+        switch_7.gate++ <--> Channel <--> switch_5.gate++;
+        // switch 8
+        switch_8.gate++ <--> Channel <--> controller.gate++;
+        switch_8.gate++ <--> Channel <--> switch_6.gate++;
+        // switch 9
+        switch_9.gate++ <--> Channel <--> controller.gate++;
+        switch_9.gate++ <--> Channel <--> switch_7.gate++;
 }
